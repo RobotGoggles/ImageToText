@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image to Text</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-labelledby="app-title">
+        <div class="topbar">
+          <div>
+            <p class="eyebrow">PDF and screenshot OCR</p>
+            <h1 id="app-title">Image to Text</h1>
+          </div>
+          <div class="topbar-actions">
+            <details class="advanced-settings">
+              <summary aria-label="Advanced settings" title="Advanced settings">
+              <span class="gear-icon" aria-hidden="true">⚙</span>
+              </summary>
+              <div class="advanced-body">
+                <label>
+                  <span>OCR language</span>
+                  <select id="languageSelect">
+                    <option value="eng">English</option>
+                    <option value="spa">Spanish</option>
+                    <option value="fra">French</option>
+                    <option value="deu">German</option>
+                    <option value="ita">Italian</option>
+                    <option value="por">Portuguese</option>
+                  </select>
+                </label>
+
+                <label class="toggle-row">
+                  <input id="embeddedTextToggle" type="checkbox" checked />
+                  <span>Use embedded PDF text when available</span>
+                </label>
+              </div>
+            </details>
+            <button class="ghost-button" id="clearButton" type="button">Clear</button>
+          </div>
+        </div>
+
+        <div class="grid">
+          <section class="panel input-panel" aria-labelledby="upload-title">
+            <div class="panel-heading">
+              <h2 id="upload-title">Source File</h2>
+              <span id="fileStatus">No file selected</span>
+            </div>
+
+            <label class="dropzone" id="dropzone">
+              <input
+                id="fileInput"
+                type="file"
+                accept="application/pdf,image/png,image/jpeg,image/webp,image/bmp,image/tiff"
+              />
+              <span class="dropzone-icon" aria-hidden="true">+</span>
+              <span class="dropzone-title">Drop a PDF or screenshot here</span>
+              <span class="dropzone-meta">Supports PDF, PNG, JPG, WEBP, BMP, and TIFF</span>
+            </label>
+
+            <div class="settings-grid">
+              <label>
+                <span>Formatting</span>
+                <select id="formatSelect">
+                  <option value="clean">Clean copy text</option>
+                  <option value="paragraphs">Preserve paragraphs</option>
+                  <option value="raw">Raw OCR output</option>
+                </select>
+              </label>
+            </div>
+
+            <button class="primary-button" id="extractButton" type="button" disabled>
+              <span class="button-progress" id="buttonProgress"></span>
+              <span class="button-label" id="buttonLabel">Extract Text</span>
+            </button>
+          </section>
+
+          <section class="panel preview-panel" aria-labelledby="preview-title">
+            <div class="panel-heading">
+              <h2 id="preview-title">Preview</h2>
+              <span id="pageCount">0 pages</span>
+            </div>
+            <div id="preview" class="preview-empty">
+              <span>Preview appears after upload</span>
+            </div>
+          </section>
+
+          <section class="panel output-panel" aria-labelledby="output-title">
+            <div class="panel-heading">
+              <h2 id="output-title">Extracted Text</h2>
+              <span id="textStats">0 characters</span>
+            </div>
+            <textarea
+              id="outputText"
+              spellcheck="true"
+              placeholder="Extracted text will appear here. You can edit it before copying or downloading."
+            ></textarea>
+            <div class="actions">
+              <button class="secondary-button" id="copyButton" type="button" disabled>
+                Copy Text
+              </button>
+              <button class="secondary-button" id="downloadButton" type="button" disabled>
+                Download TXT
+              </button>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
