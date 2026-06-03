@@ -13,6 +13,21 @@
   --shadow: 0 18px 55px rgba(31, 55, 75, 0.12);
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #11161c;
+  --surface: #1a222b;
+  --surface-strong: #26313d;
+  --text: #edf3f8;
+  --muted: #a4b3c2;
+  --line: #334250;
+  --accent: #48a6b6;
+  --accent-dark: #73c4cf;
+  --accent-soft: #16333a;
+  --danger: #d06969;
+  --shadow: 0 18px 55px rgba(0, 0, 0, 0.3);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -148,6 +163,20 @@ h2 {
     transform 160ms ease;
 }
 
+.dropzone,
+#preview,
+.preview-page,
+#outputText {
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+:root[data-theme="dark"] .dropzone {
+  background: #161d25;
+}
+
 .dropzone.is-dragover {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -208,6 +237,7 @@ h2 {
   position: relative;
 }
 
+.icon-button,
 .advanced-settings summary {
   display: grid;
   width: 42px;
@@ -218,16 +248,30 @@ h2 {
   background: transparent;
   color: var(--text);
   cursor: pointer;
+}
+
+.advanced-settings summary {
   list-style: none;
+}
+
+.icon-button:hover,
+.advanced-settings summary:hover {
+  background: #dfe9f2;
+}
+
+:root[data-theme="dark"] .icon-button:hover,
+:root[data-theme="dark"] .advanced-settings summary:hover {
+  background: var(--surface-strong);
+}
+
+#themeIcon {
+  font-size: 1.25rem;
+  line-height: 1;
 }
 
 .gear-icon {
   font-size: 1.38rem;
   line-height: 1;
-}
-
-.advanced-settings summary:hover {
-  background: #dfe9f2;
 }
 
 .advanced-settings summary::marker {
@@ -346,6 +390,10 @@ select {
   background: #f7fafc;
 }
 
+:root[data-theme="dark"] #preview {
+  background: #151c24;
+}
+
 .preview-empty {
   display: grid;
   place-items: center;
@@ -363,6 +411,10 @@ select {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #ffffff;
+}
+
+:root[data-theme="dark"] .preview-page {
+  background: #1f2933;
 }
 
 .preview-page canvas,
@@ -390,6 +442,10 @@ select {
   color: var(--text);
   background: #fbfcfe;
   line-height: 1.55;
+}
+
+:root[data-theme="dark"] #outputText {
+  background: #151c24;
 }
 
 #outputText:focus,

@@ -15,9 +15,18 @@
             <h1 id="app-title">Image to Text</h1>
           </div>
           <div class="topbar-actions">
+            <button
+              class="icon-button"
+              id="themeToggle"
+              type="button"
+              aria-label="Switch to dark mode"
+              title="Switch to dark mode"
+            >
+              <span id="themeIcon" aria-hidden="true">☾</span>
+            </button>
             <details class="advanced-settings">
               <summary aria-label="Advanced settings" title="Advanced settings">
-              <span class="gear-icon" aria-hidden="true">⚙</span>
+                <span class="gear-icon" aria-hidden="true">⚙</span>
               </summary>
               <div class="advanced-body">
                 <label>
@@ -57,7 +66,7 @@
               />
               <span class="dropzone-icon" aria-hidden="true">+</span>
               <span class="dropzone-title">Drop a PDF or screenshot here</span>
-              <span class="dropzone-meta">Supports PDF, PNG, JPG, WEBP, BMP, and TIFF</span>
+              <span class="dropzone-meta">Supports PDF, PNG, JPG, WEBP, BMP, TIFF, and clipboard images</span>
             </label>
 
             <div class="settings-grid">

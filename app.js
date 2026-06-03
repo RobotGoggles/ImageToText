@@ -6,6 +6,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 const fileInput = document.querySelector("#fileInput");
 const dropzone = document.querySelector("#dropzone");
 const extractButton = document.querySelector("#extractButton");
+const themeToggle = document.querySelector("#themeToggle");
+const themeIcon = document.querySelector("#themeIcon");
 const clearButton = document.querySelector("#clearButton");
 const copyButton = document.querySelector("#copyButton");
 const downloadButton = document.querySelector("#downloadButton");
@@ -47,6 +49,8 @@ const imageTypes = new Set([
 
 const imageExtensions = new Set(["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"]);
 
+initializeTheme();
+
 fileInput.addEventListener("change", (event) => {
   const [file] = event.target.files;
   if (file) {
@@ -74,11 +78,33 @@ dropzone.addEventListener("drop", (event) => {
 });
 
 extractButton.addEventListener("click", extractText);
+themeToggle.addEventListener("click", toggleTheme);
 clearButton.addEventListener("click", resetApp);
 copyButton.addEventListener("click", copyText);
 downloadButton.addEventListener("click", downloadText);
 outputText.addEventListener("input", updateTextStats);
 formatSelect.addEventListener("change", renderExtractedText);
+document.addEventListener("paste", handlePaste);
+
+function initializeTheme() {
+  const savedTheme = localStorage.getItem("imageToTextTheme");
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(savedTheme || (prefersDark ? "dark" : "light"));
+}
+
+function toggleTheme() {
+  const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  localStorage.setItem("imageToTextTheme", nextTheme);
+  applyTheme(nextTheme);
+}
+
+function applyTheme(theme) {
+  const isDark = theme === "dark";
+  document.documentElement.dataset.theme = isDark ? "dark" : "light";
+  themeIcon.textContent = isDark ? "☀" : "☾";
+  themeToggle.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
+  themeToggle.title = isDark ? "Switch to light mode" : "Switch to dark mode";
+}
 
 async function loadFile(file) {
   if (!isSupportedFile(file)) {
@@ -111,6 +137,21 @@ async function loadFile(file) {
     showToast("Could not load that file. Try a different PDF or image.", true);
     resetPreview();
   }
+}
+
+async function handlePaste(event) {
+  if (state.isProcessing) {
+    return;
+  }
+
+  const clipboardFile = getClipboardImageFile(event);
+  if (!clipboardFile) {
+    return;
+  }
+
+  event.preventDefault();
+  await loadFile(clipboardFile);
+  showToast("Pasted image loaded.");
 }
 
 async function extractText() {
@@ -473,6 +514,28 @@ function isImageFile(file) {
 
 function getFileExtension(fileName) {
   return fileName.split(".").pop()?.toLowerCase() || "";
+}
+
+function getClipboardImageFile(event) {
+  const items = Array.from(event.clipboardData?.items || []);
+  const imageItem = items.find((item) => item.type.startsWith("image/"));
+  const file = imageItem?.getAsFile();
+  if (file) {
+    const extension = file.type.split("/")[1] || "png";
+    return new File([file], `clipboard-image.${extension}`, { type: file.type || "image/png" });
+  }
+
+  const fileFromList = Array.from(event.clipboardData?.files || []).find((item) =>
+    item.type.startsWith("image/"),
+  );
+  if (fileFromList) {
+    const extension = fileFromList.type.split("/")[1] || "png";
+    return new File([fileFromList], `clipboard-image.${extension}`, {
+      type: fileFromList.type || "image/png",
+    });
+  }
+
+  return null;
 }
 
 function loadImage(src) {
