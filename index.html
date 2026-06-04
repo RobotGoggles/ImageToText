@@ -33,6 +33,17 @@
             >
               <span id="themeIcon" aria-hidden="true">☾</span>
             </button>
+            <button
+              class="icon-button"
+              id="bugReportButton"
+              type="button"
+              aria-label="Report a bug"
+              title="Report a bug"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M9.5 4.5 8.3 3.3a1 1 0 0 1 1.4-1.4L11 3.2a5.5 5.5 0 0 1 2 0l1.3-1.3a1 1 0 1 1 1.4 1.4l-1.2 1.2A6 6 0 0 1 17 8h2a1 1 0 1 1 0 2h-1.2l-.6 2.4A5.5 5.5 0 0 1 18 15v1h1a1 1 0 1 1 0 2h-1.3A6.5 6.5 0 0 1 10 20.8V21a1 1 0 1 1-2 0v-.2A6.5 6.5 0 0 1 4.3 18H3a1 1 0 1 1 0-2h1v-1a5.5 5.5 0 0 1 .8-2.6L4.2 10H3a1 1 0 1 1 0-2h2a6 6 0 0 1 4.5-3.5Zm.5 1.5a4 4 0 0 0-4 4v2.5a4 4 0 0 0 8 0V10a4 4 0 0 0-4-4Z" fill="currentColor"/>
+              </svg>
+            </button>
             <details class="advanced-settings">
               <summary aria-label="Advanced settings" title="Advanced settings">
                 <span class="gear-icon" aria-hidden="true">⚙</span>
@@ -83,10 +94,8 @@
                 />
                 <div class="dropzone-placeholder" id="dropzonePlaceholder">
                   <span class="dropzone-icon" aria-hidden="true">+</span>
-                  <span class="dropzone-title">Drop a PDF or screenshot here</span>
-                  <span class="dropzone-meta">Supports PDF, PNG, JPG, WEBP, BMP, TIFF, and clipboard images</span>
-                  <span class="dropzone-note">
-                    Tip: press <span id="clipboardShortcutText">Cmd/Ctrl</span>+V on the page to paste an image from the clipboard
+                  <span class="dropzone-title">
+                    Drag and drop a file here or use <span id="clipboardShortcutText">Cmd</span>+V
                   </span>
                 </div>
                 <div id="dropzonePreview" class="dropzone-preview preview-empty">
@@ -102,6 +111,10 @@
               >
                 ×
               </button>
+              <div class="extract-status" id="extractStatus" role="status" aria-live="polite" aria-atomic="true">
+                <div class="extract-status-bar" id="buttonProgress"></div>
+                <span class="button-label" id="buttonLabel">Upload a document to read the text.</span>
+              </div>
             </div>
 
             <div class="settings-grid">
@@ -115,23 +128,45 @@
               </label>
             </div>
 
-            <button class="primary-button" id="extractButton" type="button" disabled>
-              <span class="button-progress" id="buttonProgress"></span>
-              <span class="button-label" id="buttonLabel">Extract Text</span>
-            </button>
           </section>
 
           <section class="panel output-panel" aria-labelledby="output-title">
             <div class="panel-heading">
-              <h2 id="output-title">Extracted Text</h2>
+              <div class="panel-heading-meta">
+                <h2 id="output-title">Extracted Text</h2>
+                <span id="proofreadModeIndicator" class="proofread-mode-indicator" aria-hidden="true">
+                  Proofread mode active
+                </span>
+              </div>
               <span id="textStats">0 characters</span>
             </div>
-            <textarea
-              id="outputText"
-              spellcheck="true"
-              placeholder="Extracted text will appear here. You can edit it before copying or downloading."
-            ></textarea>
+            <div class="output-editor">
+              <div id="outputMirror" class="output-mirror" aria-hidden="true"></div>
+              <textarea
+                id="outputText"
+                spellcheck="true"
+                placeholder="Extracted text will appear here. You can edit it before copying or downloading."
+              ></textarea>
+              <section class="proofread-panel" aria-labelledby="proofread-title" hidden>
+                <div class="proofread-header">
+                  <div>
+                    <h3 id="proofread-title">Proofreading</h3>
+                    <span id="proofreadStatus" aria-live="polite">Run Proofread to review suggestions</span>
+                  </div>
+                </div>
+
+                <div id="proofreadList" class="proofread-list" aria-live="polite"></div>
+
+                <p class="proofread-attribution">
+                  Powered by
+                  <a href="https://languagetool.org" target="_blank" rel="noopener">LanguageTool</a>
+                </p>
+              </section>
+            </div>
             <div class="actions">
+              <button class="secondary-button" id="proofreadButton" type="button" aria-pressed="false" disabled>
+                Proofread
+              </button>
               <button class="secondary-button" id="copyButton" type="button" disabled>
                 Copy Text
               </button>
@@ -139,6 +174,7 @@
                 Download TXT
               </button>
             </div>
+
           </section>
         </div>
       </section>

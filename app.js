@@ -7,22 +7,30 @@ const fileInput = document.querySelector("#fileInput");
 const dropzone = document.querySelector("#dropzone");
 const dropzoneShell = document.querySelector("#dropzoneShell");
 const clearUploadButton = document.querySelector("#clearUploadButton");
-const extractButton = document.querySelector("#extractButton");
 const themeToggle = document.querySelector("#themeToggle");
 const themeIcon = document.querySelector("#themeIcon");
+const bugReportButton = document.querySelector("#bugReportButton");
 const copyButton = document.querySelector("#copyButton");
 const downloadButton = document.querySelector("#downloadButton");
+const proofreadButton = document.querySelector("#proofreadButton");
+const proofreadStatus = document.querySelector("#proofreadStatus");
+const proofreadList = document.querySelector("#proofreadList");
 const languageSelect = document.querySelector("#languageSelect");
 const formatSelect = document.querySelector("#formatSelect");
 const embeddedTextToggle = document.querySelector("#embeddedTextToggle");
 const autoFixCapsToggle = document.querySelector("#autoFixCapsToggle");
 const dropzonePreview = document.querySelector("#dropzonePreview");
+const outputEditor = document.querySelector(".output-editor");
+const outputMirror = document.querySelector("#outputMirror");
 const outputText = document.querySelector("#outputText");
+const proofreadPanel = document.querySelector(".proofread-panel");
 const fileStatus = document.querySelector("#fileStatus");
 const pageCount = document.querySelector("#pageCount");
 const textStats = document.querySelector("#textStats");
+const proofreadModeIndicator = document.querySelector("#proofreadModeIndicator");
 const buttonLabel = document.querySelector("#buttonLabel");
 const buttonProgress = document.querySelector("#buttonProgress");
+const extractStatus = document.querySelector("#extractStatus");
 const clipboardShortcutText = document.querySelector("#clipboardShortcutText");
 
 const state = {
@@ -30,6 +38,19 @@ const state = {
   renderedPages: [],
   extractedPages: [],
   isProcessing: false,
+  proofread: {
+    requestId: 0,
+    sourceText: "",
+    matches: [],
+    groups: [],
+    dismissedKeys: new Set(),
+    isChecking: false,
+    isApplyingReplacement: false,
+    isStale: false,
+    activeKey: "",
+    lastStatus: "",
+    isEnabled: false,
+  },
 };
 
 let tesseractModulePromise = null;
@@ -51,6 +72,8 @@ const imageTypes = new Set([
 ]);
 
 const imageExtensions = new Set(["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"]);
+const languageToolEndpoint = "https://api.languagetool.org/v2/check";
+const proofreadChunkLimit = 16000;
 const acronymWhitelist = new Set([
   "AI",
   "API",
@@ -203,16 +226,20 @@ dropzone.addEventListener("drop", (event) => {
   }
 });
 
-extractButton.addEventListener("click", extractText);
 themeToggle.addEventListener("click", toggleTheme);
+bugReportButton.addEventListener("click", reportBug);
 clearUploadButton.addEventListener("click", resetApp);
 copyButton.addEventListener("click", copyText);
 downloadButton.addEventListener("click", downloadText);
+proofreadButton.addEventListener("click", toggleProofreadingMode);
 outputText.addEventListener("input", updateTextStats);
+outputText.addEventListener("input", handleOutputTextInput);
+outputText.addEventListener("scroll", syncOutputMirrorScroll);
 formatSelect.addEventListener("change", renderExtractedText);
 document.addEventListener("paste", handlePaste);
 autoFixCapsToggle.addEventListener("change", handleAutoFixCapsChange);
 document.addEventListener("click", handleDocumentClick);
+outputMirror.addEventListener("click", handleOutputMirrorClick);
 
 function initializeTheme() {
   const savedTheme = localStorage.getItem("imageToTextTheme");
@@ -224,6 +251,41 @@ function toggleTheme() {
   const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   localStorage.setItem("imageToTextTheme", nextTheme);
   applyTheme(nextTheme);
+}
+
+function reportBug() {
+  const issueUrl = buildBugReportUrl();
+  window.open(issueUrl, "_blank", "noopener,noreferrer");
+}
+
+function buildBugReportUrl() {
+  const repoUrl = "https://github.com/RobotGoggles/ImageToText/issues/new";
+  const subject = encodeURIComponent(`Bug: ${state.file?.name ? state.file.name : "Image to Text"}`);
+  const currentUrl = `${window.location.href}`;
+  const browser = navigator.userAgent || "Unknown browser";
+  const body = encodeURIComponent(
+    [
+      "## What happened",
+      "",
+      "## What I expected",
+      "",
+      "## Steps to reproduce",
+      "1.",
+      "2.",
+      "3.",
+      "",
+      "## Environment",
+      `- Page: ${currentUrl}`,
+      `- Browser: ${browser}`,
+      `- Theme: ${document.documentElement.dataset.theme || "light"}`,
+      `- File name: ${state.file?.name || "No file loaded"}`,
+      "",
+      "## Additional notes",
+      "",
+    ].join("\n"),
+  );
+
+  return `${repoUrl}?title=${subject}&body=${body}`;
 }
 
 function applyTheme(theme) {
@@ -255,6 +317,13 @@ function handleAutoFixCapsChange() {
 
 function handleDocumentClick(event) {
   const advancedSettings = document.querySelector(".advanced-settings");
+  const clickedHighlight = event.target.closest?.("[data-proofread-key]");
+  const clickedProofreadPanel = proofreadPanel?.contains(event.target);
+
+  if (state.proofread.activeKey && !clickedHighlight && !clickedProofreadPanel) {
+    clearProofreadFocus();
+  }
+
   if (!advancedSettings?.open) {
     return;
   }
@@ -273,11 +342,11 @@ async function loadFile(file) {
   }
 
   state.file = file;
+  setProofreadingMode(false);
   state.renderedPages = [];
   state.extractedPages = [];
   outputText.value = "";
   setProgress("Preparing preview", 0);
-  setProcessing(false);
   fileStatus.textContent = `${file.name} (${formatBytes(file.size)})`;
   dropzonePreview.className = "dropzone-preview";
   dropzone.classList.add("has-file");
@@ -290,9 +359,8 @@ async function loadFile(file) {
       await renderImagePreview(file);
     }
 
-    extractButton.disabled = false;
     updateTextStats();
-    setProgress("Ready", 0);
+    await extractText();
   } catch (error) {
     console.error(error);
     showToast("Could not load that file. Try a different PDF or image.", true);
@@ -315,6 +383,21 @@ async function handlePaste(event) {
   event.preventDefault();
   await loadFile(clipboardFile);
   showToast("Pasted image loaded.");
+}
+
+async function toggleProofreadingMode() {
+  if (state.isProcessing) {
+    return;
+  }
+
+  if (state.proofread.isEnabled) {
+    clearProofreadingResults({ keepMessage: false });
+    setProofreadingMode(false);
+    return;
+  }
+
+  setProofreadingMode(true);
+  await checkProofreading();
 }
 
 async function extractText() {
@@ -538,6 +621,8 @@ function renderExtractedText() {
     outputText.value = cleanCopyText(rawText, { autoFixCaps: shouldFixCaps });
   }
 
+  clearProofreadingResults({ keepMessage: false });
+  renderOutputMirror();
   updateTextStats();
 }
 
@@ -628,6 +713,725 @@ function isLikelyAcronymToken(token) {
   return upperToken.length <= 2;
 }
 
+function handleOutputTextInput() {
+  const currentText = outputText.value;
+  updateTextStats();
+  renderOutputMirror();
+
+  if (state.proofread.isApplyingReplacement || !state.proofread.sourceText || currentText === state.proofread.sourceText) {
+    return;
+  }
+
+  markProofreadingStale("Text changed. Run Proofread again to refresh suggestions.");
+}
+
+async function checkProofreading() {
+  const text = outputText.value;
+  if (!text.trim() || state.isProcessing || state.proofread.isChecking) {
+    return;
+  }
+
+  const requestId = state.proofread.requestId + 1;
+  state.proofread.requestId = requestId;
+  state.proofread.isChecking = true;
+  state.proofread.sourceText = text;
+  state.proofread.matches = [];
+  state.proofread.groups = [];
+  state.proofread.dismissedKeys = new Set();
+  state.proofread.isStale = false;
+  renderProofreadingState({
+    status: "Checking spelling...",
+    groups: [],
+    isChecking: true,
+  });
+
+  try {
+    const matches = await runLanguageToolChecks(text, requestId);
+    if (requestId !== state.proofread.requestId) {
+      return;
+    }
+
+    state.proofread.matches = matches;
+    state.proofread.groups = groupProofreadMatches(matches);
+    state.proofread.isChecking = false;
+    renderProofreadingState({
+      status: state.proofread.groups.length ? "Review the suggestions below." : "No issues found.",
+      groups: state.proofread.groups,
+      isChecking: false,
+    });
+  } catch (error) {
+    if (requestId !== state.proofread.requestId) {
+      return;
+    }
+
+    console.error(error);
+    state.proofread.isChecking = false;
+    renderProofreadingState({
+      status: getProofreadingErrorMessage(error),
+      groups: [],
+      isChecking: false,
+      isError: true,
+    });
+    showToast(getProofreadingErrorMessage(error), true);
+  }
+}
+
+function setProofreadingMode(isEnabled) {
+  state.proofread.isEnabled = isEnabled;
+  proofreadButton.classList.toggle("is-active", isEnabled);
+  proofreadButton.setAttribute("aria-pressed", String(isEnabled));
+  proofreadButton.title = isEnabled ? "Exit proofreading mode" : "Enter proofreading mode";
+  outputText.readOnly = isEnabled;
+  if (proofreadModeIndicator) {
+    proofreadModeIndicator.classList.toggle("is-active", isEnabled);
+    proofreadModeIndicator.setAttribute("aria-hidden", String(!isEnabled));
+  }
+  if (outputEditor) {
+    outputEditor.classList.toggle("is-proofreading", isEnabled);
+  }
+  if (!isEnabled) {
+    clearProofreadFocus();
+    proofreadPanel.hidden = true;
+  }
+}
+
+async function runLanguageToolChecks(text, requestId) {
+  const chunks = splitTextForProofreading(text, proofreadChunkLimit);
+  if (chunks.length === 0) {
+    return [];
+  }
+
+  const matches = [];
+  for (const chunk of chunks) {
+    if (requestId !== state.proofread.requestId) {
+      return [];
+    }
+
+    const chunkMatches = await checkTextChunk(chunk.text);
+    for (const match of chunkMatches) {
+      matches.push({
+        ...match,
+        offset: match.offset + chunk.offset,
+        originalText: text.slice(match.offset + chunk.offset, match.offset + chunk.offset + match.length),
+        contextText: buildContextText(text, match.offset + chunk.offset, match.length),
+      });
+    }
+  }
+
+  matches.sort((left, right) => left.offset - right.offset || left.length - right.length);
+  return dedupeProofreadMatches(matches);
+}
+
+async function checkTextChunk(text) {
+  const body = new URLSearchParams();
+  body.set("text", text);
+  body.set("language", "auto");
+  body.set("enabledOnly", "false");
+
+  const response = await fetch(languageToolEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    throw new Error(`LanguageTool request failed with status ${response.status}.`);
+  }
+
+  const data = await response.json();
+  return Array.isArray(data?.matches) ? data.matches : [];
+}
+
+function splitTextForProofreading(text, maxChunkLength) {
+  const normalized = text.replace(/\r\n/g, "\n");
+  const parts = normalized.split(/(\n{2,})/);
+  const chunks = [];
+  let current = "";
+  let currentOffset = 0;
+  let position = 0;
+
+  for (const part of parts) {
+    if (!part) {
+      continue;
+    }
+
+    if (!current) {
+      currentOffset = position;
+    }
+
+    if (part.length > maxChunkLength) {
+      if (current) {
+        chunks.push({ text: current, offset: currentOffset });
+        current = "";
+      }
+
+      let start = 0;
+      while (start < part.length) {
+        chunks.push({ text: part.slice(start, start + maxChunkLength), offset: position + start });
+        start += maxChunkLength;
+      }
+      position += part.length;
+      continue;
+    }
+
+    if (current && current.length + part.length > maxChunkLength) {
+      chunks.push({ text: current, offset: currentOffset });
+      current = "";
+      currentOffset = position;
+    }
+
+    current += part;
+    position += part.length;
+  }
+
+  if (current) {
+    chunks.push({ text: current, offset: currentOffset });
+  }
+
+  return chunks;
+}
+
+function dedupeProofreadMatches(matches) {
+  const seen = new Set();
+  return matches.filter((match) => {
+    const key = fingerprintProofreadMatch(match);
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function fingerprintProofreadMatch(match) {
+  const replacementValues = (match.replacements || []).slice(0, 3).map((item) => item.value || "").join("|");
+  return [match.rule?.id || "rule", match.offset, match.length, match.message || "", replacementValues].join(":");
+}
+
+function groupProofreadMatches(matches) {
+  const groups = new Map();
+
+  for (const match of matches) {
+    const key = fingerprintProofreadGroup(match.originalText);
+    const existing = groups.get(key);
+    const entry = normalizeProofreadMatch(match);
+
+    if (!existing) {
+      groups.set(key, {
+        key,
+        originalText: entry.originalText,
+        normalizedText: normalizeProofreadGroupText(entry.originalText),
+        matches: [entry],
+        replacements: entry.replacements.slice(),
+        message: entry.message,
+        rule: entry.rule,
+      });
+      continue;
+    }
+
+    existing.matches.push(entry);
+    existing.message ||= entry.message;
+    existing.rule ||= entry.rule;
+    existing.replacements = mergeProofreadReplacements(existing.replacements, entry.replacements);
+  }
+
+  return Array.from(groups.values()).sort((left, right) => left.matches[0].offset - right.matches[0].offset);
+}
+
+function normalizeProofreadMatch(match) {
+  return {
+    ...match,
+    replacements: (match.replacements || []).slice(0, 3),
+  };
+}
+
+function mergeProofreadReplacements(leftReplacements, rightReplacements) {
+  const merged = [...leftReplacements];
+  const seen = new Set(leftReplacements.map((item) => item.value));
+
+  for (const replacement of rightReplacements) {
+    if (seen.has(replacement.value)) {
+      continue;
+    }
+
+    seen.add(replacement.value);
+    merged.push(replacement);
+  }
+
+  return merged;
+}
+
+function fingerprintProofreadGroup(originalText) {
+  return normalizeProofreadGroupText(originalText);
+}
+
+function normalizeProofreadGroupText(text) {
+  return (text || "").trim();
+}
+
+function createProofreadGroupKey(group) {
+  return fingerprintProofreadGroup(group.originalText);
+}
+
+function normalizeProofreadGroups(groups) {
+  return groups.map((group) => ({
+    ...group,
+    matches: group.matches.map((match) => ({ ...match })),
+    replacements: (group.replacements || []).slice(),
+  }));
+}
+
+function getVisibleProofreadGroups(groups = state.proofread.groups) {
+  return normalizeProofreadGroups(groups).filter(
+    (group) => !state.proofread.dismissedKeys.has(createProofreadGroupKey(group)),
+  );
+}
+
+function shiftOffsetByEdits(offset, edits) {
+  let shiftedOffset = offset;
+
+  for (const edit of edits) {
+    if (shiftedOffset >= edit.end) {
+      shiftedOffset += edit.delta;
+    }
+  }
+
+  return shiftedOffset;
+}
+
+function rebuildProofreadGroupAfterEdits(group, edits, currentText) {
+  const matches = group.matches.map((match) => {
+    const shiftedOffset = shiftOffsetByEdits(match.offset, edits);
+    return {
+      ...match,
+      offset: shiftedOffset,
+      contextText: buildContextText(currentText, shiftedOffset, match.length),
+    };
+  });
+
+  return {
+    ...group,
+    matches,
+    originalText: matches[0] ? currentText.slice(matches[0].offset, matches[0].offset + matches[0].length) : group.originalText,
+  };
+}
+
+function buildContextText(text, offset, length) {
+  const before = text.slice(Math.max(0, offset - 42), offset);
+  const matched = text.slice(offset, offset + length);
+  const after = text.slice(offset + length, offset + length + 42);
+  return { before, matched, after };
+}
+
+function renderProofreadingState({ status, groups, isChecking, isError = false }) {
+  state.proofread.lastStatus = status;
+  const visibleGroups = getVisibleProofreadGroups(groups);
+  const activeGroup = visibleGroups.find((group) => createProofreadGroupKey(group) === state.proofread.activeKey) || null;
+  const displayStatus =
+    state.proofread.isStale && !isChecking
+      ? "Text changed. Run Proofread again to refresh suggestions."
+      : status;
+
+  proofreadStatus.textContent = isChecking ? status : activeGroup ? displayStatus : status;
+  proofreadStatus.dataset.error = isError ? "true" : "false";
+  proofreadButton.disabled = !outputText.value.trim();
+  proofreadList.replaceChildren();
+  renderOutputMirror();
+
+  if (isChecking) {
+    proofreadList.append(createProofreadEmptyState("Checking suggestions..."));
+    updateProofreadPanelVisibility();
+    return;
+  }
+
+  if (!activeGroup) {
+    proofreadList.append(
+      createProofreadEmptyState(
+        state.proofread.isStale
+          ? "Suggestions are out of date. Click a highlighted word to refresh."
+          : "Click a highlighted word to review the suggestion.",
+      ),
+    );
+    updateProofreadPanelVisibility();
+    return;
+  }
+
+  proofreadList.append(createProofreadCard(activeGroup, state.proofread.isStale));
+  syncActiveProofreadCard();
+  updateProofreadPanelVisibility();
+}
+
+function refreshProofreadingPanel() {
+  if (!state.proofread.groups.length) {
+    proofreadList.replaceChildren(
+      createProofreadEmptyState("Click a highlighted word to review the suggestion."),
+    );
+    proofreadStatus.textContent = state.proofread.lastStatus || "Click a highlighted word to review the suggestion.";
+    proofreadStatus.dataset.error = "false";
+    proofreadPanel.hidden = true;
+    return;
+  }
+
+  renderProofreadingState({
+    status: state.proofread.lastStatus || "Review the suggestion below.",
+    groups: state.proofread.groups,
+    isChecking: false,
+  });
+  updateProofreadPanelVisibility();
+}
+
+function createProofreadEmptyState(message) {
+  const empty = document.createElement("div");
+  empty.className = "proofread-empty";
+  empty.textContent = message;
+  return empty;
+}
+
+function createProofreadCard(group, isStale = false) {
+  const card = document.createElement("article");
+  card.className = "proofread-card";
+  if (isStale) {
+    card.classList.add("is-stale");
+  }
+  card.dataset.proofreadKey = createProofreadGroupKey(group);
+
+  const header = document.createElement("div");
+  header.className = "proofread-card-header";
+
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "proofread-card-titlewrap";
+
+  const title = document.createElement("h4");
+  title.textContent = group.message || "Suggestion";
+
+  const category = document.createElement("span");
+  category.className = "proofread-category";
+  category.textContent = group.matches.length > 1 ? `${group.matches.length} occurrences` : "1 occurrence";
+
+  titleWrap.append(title, category);
+
+  const dismissButton = document.createElement("button");
+  dismissButton.type = "button";
+  dismissButton.className = "ghost-button proofread-dismiss";
+  dismissButton.textContent = "Dismiss";
+  dismissButton.addEventListener("click", () => dismissProofreadGroup(group));
+  dismissButton.disabled = isStale;
+
+  header.append(titleWrap, dismissButton);
+
+  const context = document.createElement("p");
+  context.className = "proofread-context";
+  context.append(
+    document.createTextNode(group.matches[0].contextText.before),
+    createHighlightedSpan(group.matches[0].contextText.matched),
+    document.createTextNode(group.matches[0].contextText.after),
+  );
+
+  const replacementRow = document.createElement("div");
+  replacementRow.className = "proofread-replacements";
+  const replacements = (group.replacements || []).slice(0, 3);
+
+  if (replacements.length === 0) {
+    const noReplacement = document.createElement("span");
+    noReplacement.className = "proofread-note";
+    noReplacement.textContent = "No automatic replacement available.";
+    replacementRow.append(noReplacement);
+  } else {
+    for (const replacement of replacements) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary-button proofread-replacement";
+      button.textContent = replacement.value;
+      button.addEventListener("click", () => applyProofreadReplacement(group, replacement.value));
+      button.disabled = isStale;
+      replacementRow.append(button);
+    }
+  }
+
+  const occurrenceSummary = document.createElement("span");
+  occurrenceSummary.className = "proofread-note";
+  occurrenceSummary.textContent =
+    group.matches.length > 1
+      ? `Applies to ${group.matches.length} matching occurrences.`
+      : "Applies to 1 occurrence.";
+
+  card.append(header, context, occurrenceSummary, replacementRow);
+  return card;
+}
+
+function createHighlightedSpan(text) {
+  const highlight = document.createElement("mark");
+  highlight.textContent = text || "";
+  return highlight;
+}
+
+function updateProofreadPanelVisibility() {
+  if (!proofreadPanel) {
+    return;
+  }
+
+  const shouldShow = state.proofread.isEnabled && Boolean(state.proofread.activeKey);
+  proofreadPanel.hidden = !shouldShow;
+}
+
+function renderOutputMirror() {
+  if (!outputMirror) {
+    return;
+  }
+
+  const text = outputText.value;
+  outputMirror.dataset.placeholder = outputText.placeholder || "";
+  const visibleGroups = getVisibleProofreadGroups();
+  const isProofreadingMode = state.proofread.isEnabled;
+  if (outputEditor) {
+    outputEditor.classList.toggle("is-proofreading", isProofreadingMode);
+  }
+  outputText.readOnly = isProofreadingMode;
+  const highlights = collectProofreadHighlights(text, visibleGroups);
+
+  outputMirror.replaceChildren();
+  outputMirror.append(buildHighlightedFragment(text, highlights));
+  syncOutputMirrorScroll();
+  updateProofreadPanelVisibility();
+}
+
+function collectProofreadHighlights(text, groups) {
+  const highlights = [];
+
+  for (const group of groups) {
+    const needle = group.originalText;
+    if (!needle) {
+      continue;
+    }
+
+    let searchIndex = 0;
+    while (searchIndex < text.length) {
+      const foundIndex = text.indexOf(needle, searchIndex);
+      if (foundIndex === -1) {
+        break;
+      }
+
+      highlights.push({
+        start: foundIndex,
+        end: foundIndex + needle.length,
+        key: createProofreadGroupKey(group),
+      });
+      searchIndex = foundIndex + Math.max(1, needle.length);
+    }
+  }
+
+  return mergeProofreadHighlights(highlights);
+}
+
+function mergeProofreadHighlights(highlights) {
+  const sorted = [...highlights].sort((left, right) => {
+    if (left.start !== right.start) {
+      return left.start - right.start;
+    }
+
+    return right.end - left.end;
+  });
+
+  const merged = [];
+  let lastEnd = -1;
+
+  for (const highlight of sorted) {
+    if (highlight.start < lastEnd) {
+      continue;
+    }
+
+    merged.push(highlight);
+    lastEnd = highlight.end;
+  }
+
+  return merged;
+}
+
+function buildHighlightedFragment(text, highlights) {
+  const fragment = document.createDocumentFragment();
+
+  if (!text) {
+    return fragment;
+  }
+
+  let cursor = 0;
+  for (const highlight of highlights) {
+    if (highlight.start > cursor) {
+      fragment.append(document.createTextNode(text.slice(cursor, highlight.start)));
+    }
+
+    const span = document.createElement("span");
+    span.className = "output-highlight";
+    span.dataset.proofreadKey = highlight.key;
+    span.textContent = text.slice(highlight.start, highlight.end);
+    span.addEventListener("pointerdown", () => outputText.focus());
+    fragment.append(span);
+    cursor = highlight.end;
+  }
+
+  if (cursor < text.length) {
+    fragment.append(document.createTextNode(text.slice(cursor)));
+  }
+
+  return fragment;
+}
+
+function syncOutputMirrorScroll() {
+  if (!outputMirror) {
+    return;
+  }
+
+  outputMirror.scrollTop = outputText.scrollTop;
+  outputMirror.scrollLeft = outputText.scrollLeft;
+}
+
+function handleOutputMirrorClick(event) {
+  const target = event.target.closest?.("[data-proofread-key]");
+  if (!target) {
+    return;
+  }
+
+  event.stopPropagation();
+  activateProofreadGroup(target.dataset.proofreadKey);
+}
+
+function handleOutputMirrorPointerDown() {
+  outputText.focus();
+}
+
+function activateProofreadGroup(key) {
+  if (!key || state.proofread.activeKey === key) {
+    return;
+  }
+
+  state.proofread.activeKey = key;
+  refreshProofreadingPanel();
+}
+
+function clearProofreadFocus() {
+  state.proofread.activeKey = "";
+  refreshProofreadingPanel();
+}
+
+function syncActiveProofreadCard() {
+  const cards = proofreadList.querySelectorAll(".proofread-card");
+  cards.forEach((card) => {
+    const isActive = card.dataset.proofreadKey === state.proofread.activeKey;
+    card.classList.toggle("is-active", isActive);
+    if (isActive) {
+      card.scrollIntoView({ block: "nearest" });
+    }
+  });
+}
+
+function dismissProofreadGroup(group) {
+  const key = createProofreadGroupKey(group);
+  state.proofread.dismissedKeys.add(key);
+  if (state.proofread.activeKey === key) {
+    state.proofread.activeKey = "";
+  }
+  refreshProofreadingPanel();
+}
+
+async function applyProofreadReplacement(group, replacement) {
+  const currentText = outputText.value;
+  const sortedMatches = [...group.matches].sort((left, right) => right.offset - left.offset);
+  let nextText = currentText;
+  const edits = [];
+
+  for (const match of sortedMatches) {
+    edits.push({
+      start: match.offset,
+      end: match.offset + match.length,
+      delta: replacement.length - match.length,
+    });
+    nextText =
+      nextText.slice(0, match.offset) + replacement + nextText.slice(match.offset + match.length);
+  }
+
+  edits.sort((left, right) => left.start - right.start);
+
+  state.proofread.isApplyingReplacement = true;
+  outputText.value = nextText;
+  state.proofread.isApplyingReplacement = false;
+  updateTextStats();
+  state.proofread.sourceText = nextText;
+  state.proofread.isStale = false;
+
+  const remainingGroups = state.proofread.groups
+    .filter((entry) => createProofreadGroupKey(entry) !== createProofreadGroupKey(group))
+    .map((entry) => rebuildProofreadGroupAfterEdits(entry, edits, nextText));
+
+  state.proofread.groups = remainingGroups;
+  state.proofread.matches = remainingGroups.flatMap((entry) => entry.matches);
+  state.proofread.activeKey = remainingGroups[0] ? createProofreadGroupKey(remainingGroups[0]) : "";
+
+  renderProofreadingState({
+    status:
+      remainingGroups.length > 0
+        ? `Applied to ${group.matches.length} occurrences. ${remainingGroups.length} groups remain.`
+        : "Applied to all matching occurrences.",
+    groups: remainingGroups,
+    isChecking: false,
+  });
+}
+
+function clearProofreadingResults(options = {}) {
+  state.proofread.requestId += 1;
+  state.proofread.sourceText = "";
+  state.proofread.matches = [];
+  state.proofread.groups = [];
+  state.proofread.dismissedKeys = new Set();
+  state.proofread.isChecking = false;
+  state.proofread.isApplyingReplacement = false;
+  state.proofread.isStale = false;
+  state.proofread.activeKey = "";
+
+  if (options.keepMessage) {
+    proofreadStatus.textContent = options.message || "Run Proofread to review suggestions";
+  } else {
+    proofreadStatus.textContent = options.message || "Run Proofread to review suggestions";
+  }
+
+  proofreadStatus.dataset.error = "false";
+  proofreadButton.disabled = !outputText.value.trim();
+  updateProofreadPanelVisibility();
+  proofreadList.replaceChildren(createProofreadEmptyState("Run Proofread to review suggestions."));
+  renderOutputMirror();
+}
+
+function markProofreadingStale(message) {
+  state.proofread.isStale = true;
+  proofreadStatus.textContent = message;
+  proofreadStatus.dataset.error = "false";
+  proofreadButton.disabled = !outputText.value.trim();
+  if (state.proofread.groups.length > 0) {
+    proofreadList.replaceChildren(
+      ...state.proofread.groups.map((group) => createProofreadCard(group, true)),
+    );
+  } else {
+    proofreadList.replaceChildren(createProofreadEmptyState("Run Proofread to review suggestions."));
+  }
+  updateProofreadPanelVisibility();
+  renderOutputMirror();
+}
+
+function getProofreadingErrorMessage(error) {
+  const message = error?.message || "";
+  if (/failed with status 413|too large|payload/i.test(message)) {
+    return "The text is too long for LanguageTool. Try checking a smaller section.";
+  }
+
+  if (/fetch|network|load/i.test(message)) {
+    return "LanguageTool could not be reached. Check your connection and try again.";
+  }
+
+  return "Proofreading failed. Please try again.";
+}
+
 async function copyText() {
   const text = outputText.value.trim();
   if (!text) {
@@ -668,13 +1472,14 @@ function resetApp() {
   outputText.value = "";
   fileStatus.textContent = "No file selected";
   pageCount.textContent = "0 pages";
-  extractButton.disabled = true;
   copyButton.disabled = true;
   downloadButton.disabled = true;
   dropzone.classList.remove("has-file");
   dropzoneShell.classList.remove("has-file");
   resetPreview();
-  setProgress("Ready", 0);
+  setProofreadingMode(false);
+  clearProofreadingResults({ keepMessage: false });
+  setProgress("Upload a document to read the text.", 0);
   updateTextStats();
 }
 
@@ -695,27 +1500,32 @@ function addPreviewPage(wrapper, media, label) {
 
 function setProcessing(isProcessing) {
   state.isProcessing = isProcessing;
-  extractButton.disabled = isProcessing || !state.file;
+  dropzoneShell.classList.toggle("is-processing", isProcessing);
   fileInput.disabled = isProcessing;
   languageSelect.disabled = isProcessing;
   formatSelect.disabled = isProcessing;
   embeddedTextToggle.disabled = isProcessing;
   autoFixCapsToggle.disabled = isProcessing;
+  proofreadButton.disabled = isProcessing || !outputText.value.trim();
 }
 
 function setProgress(label, value) {
   const percent = Math.max(0, Math.min(100, Math.round(value)));
-  let buttonText = "Extract Text";
+  let statusText = "Upload a document to read the text.";
 
   if (/failed|could not/i.test(label)) {
-    buttonText = "Try Again";
+    statusText = label;
   } else if (state.isProcessing) {
-    buttonText = percent > 0 && percent < 100 ? `${label} ${percent}%` : label;
+    statusText = percent > 0 && percent < 100 ? `${label} ${percent}%` : label;
+  } else if (state.file) {
+    statusText = label;
   }
 
-  buttonLabel.textContent = buttonText;
-  extractButton.title = label;
+  buttonLabel.textContent = statusText;
   buttonProgress.style.setProperty("--button-progress", `${percent}%`);
+  if (extractStatus) {
+    extractStatus.hidden = !state.isProcessing;
+  }
 }
 
 function updateTextStats() {
@@ -723,6 +1533,9 @@ function updateTextStats() {
   textStats.textContent = `${length.toLocaleString()} ${length === 1 ? "character" : "characters"}`;
   copyButton.disabled = length === 0;
   downloadButton.disabled = length === 0;
+  if (!state.isProcessing && !state.proofread.isChecking) {
+    proofreadButton.disabled = length === 0;
+  }
 }
 
 function isSupportedFile(file) {
