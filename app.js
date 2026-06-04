@@ -242,20 +242,23 @@ document.addEventListener("click", handleDocumentClick);
 outputMirror.addEventListener("click", handleOutputMirrorClick);
 
 function initializeTheme() {
-  const savedTheme = localStorage.getItem("imageToTextTheme");
+  const savedTheme = getStoredValue("imageToTextTheme");
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   applyTheme(savedTheme || (prefersDark ? "dark" : "light"));
 }
 
 function toggleTheme() {
   const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  localStorage.setItem("imageToTextTheme", nextTheme);
+  setStoredValue("imageToTextTheme", nextTheme);
   applyTheme(nextTheme);
 }
 
 function reportBug() {
   const issueUrl = buildBugReportUrl();
-  window.open(issueUrl, "_blank", "noopener,noreferrer");
+  const popup = window.open(issueUrl, "_blank", "noopener,noreferrer");
+  if (!popup) {
+    window.location.assign(issueUrl);
+  }
 }
 
 function buildBugReportUrl() {
@@ -306,13 +309,29 @@ function initializeClipboardShortcutLabel() {
 }
 
 function initializeAutoFixCapsSetting() {
-  const savedValue = localStorage.getItem("imageToTextAutoFixCaps");
+  const savedValue = getStoredValue("imageToTextAutoFixCaps");
   autoFixCapsToggle.checked = savedValue === null ? true : savedValue === "true";
 }
 
 function handleAutoFixCapsChange() {
-  localStorage.setItem("imageToTextAutoFixCaps", String(autoFixCapsToggle.checked));
+  setStoredValue("imageToTextAutoFixCaps", String(autoFixCapsToggle.checked));
   renderExtractedText();
+}
+
+function getStoredValue(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredValue(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage failures in restricted browser contexts.
+  }
 }
 
 function handleDocumentClick(event) {
