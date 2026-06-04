@@ -8,11 +8,20 @@
   </head>
   <body>
     <main class="app-shell">
-      <section class="workspace" aria-labelledby="app-title">
+      <section class="workspace" aria-label="Image to Text">
         <div class="topbar">
-          <div>
-            <p class="eyebrow">PDF and screenshot OCR</p>
-            <h1 id="app-title">Image to Text</h1>
+          <div class="brand-mark" aria-label="Image to Text" title="Image to Text">
+            <svg viewBox="0 0 64 64" role="img" aria-hidden="true">
+              <path
+                d="M20 10h18l12 12v30a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4V14a4 4 0 0 1 4-4Z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3.5"
+                stroke-linejoin="round"
+              />
+              <path d="M38 10v10h10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round" />
+              <path d="M24 28h16M24 36h10M24 44h14" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" />
+            </svg>
           </div>
           <div class="topbar-actions">
             <button
@@ -45,9 +54,13 @@
                   <input id="embeddedTextToggle" type="checkbox" checked />
                   <span>Use embedded PDF text when available</span>
                 </label>
+
+                <label class="toggle-row">
+                  <input id="autoFixCapsToggle" type="checkbox" checked />
+                  <span>Auto-fix ALL CAPS OCR</span>
+                </label>
               </div>
             </details>
-            <button class="ghost-button" id="clearButton" type="button">Clear</button>
           </div>
         </div>
 
@@ -55,29 +68,48 @@
           <section class="panel input-panel" aria-labelledby="upload-title">
             <div class="panel-heading">
               <h2 id="upload-title">Source File</h2>
-              <span id="fileStatus">No file selected</span>
+              <div class="panel-heading-meta">
+                <span id="fileStatus">No file selected</span>
+                <span id="pageCount">0 pages</span>
+              </div>
             </div>
 
-            <label class="dropzone" id="dropzone">
-              <input
-                id="fileInput"
-                type="file"
-                accept="application/pdf,image/png,image/jpeg,image/webp,image/bmp,image/tiff"
-              />
-              <span class="dropzone-icon" aria-hidden="true">+</span>
-              <span class="dropzone-title">Drop a PDF or screenshot here</span>
-              <span class="dropzone-meta">Supports PDF, PNG, JPG, WEBP, BMP, TIFF, and clipboard images</span>
-              <span class="dropzone-note">
-                Tip: press <span id="clipboardShortcutText">Cmd/Ctrl</span>+V on the page to paste an image from the clipboard
-              </span>
-            </label>
+            <div class="dropzone-shell" id="dropzoneShell">
+              <label class="dropzone" id="dropzone">
+                <input
+                  id="fileInput"
+                  type="file"
+                  accept="application/pdf,image/png,image/jpeg,image/webp,image/bmp,image/tiff"
+                />
+                <div class="dropzone-placeholder" id="dropzonePlaceholder">
+                  <span class="dropzone-icon" aria-hidden="true">+</span>
+                  <span class="dropzone-title">Drop a PDF or screenshot here</span>
+                  <span class="dropzone-meta">Supports PDF, PNG, JPG, WEBP, BMP, TIFF, and clipboard images</span>
+                  <span class="dropzone-note">
+                    Tip: press <span id="clipboardShortcutText">Cmd/Ctrl</span>+V on the page to paste an image from the clipboard
+                  </span>
+                </div>
+                <div id="dropzonePreview" class="dropzone-preview preview-empty">
+                  <span>Preview appears after upload</span>
+                </div>
+              </label>
+              <button
+                class="clear-upload-button"
+                id="clearUploadButton"
+                type="button"
+                aria-label="Remove uploaded file"
+                title="Remove uploaded file"
+              >
+                ×
+              </button>
+            </div>
 
             <div class="settings-grid">
               <label>
                 <span>Formatting</span>
                 <select id="formatSelect">
+                  <option value="paragraphs" selected>Preserve paragraphs</option>
                   <option value="clean">Clean copy text</option>
-                  <option value="paragraphs">Preserve paragraphs</option>
                   <option value="raw">Raw OCR output</option>
                 </select>
               </label>
@@ -87,16 +119,6 @@
               <span class="button-progress" id="buttonProgress"></span>
               <span class="button-label" id="buttonLabel">Extract Text</span>
             </button>
-          </section>
-
-          <section class="panel preview-panel" aria-labelledby="preview-title">
-            <div class="panel-heading">
-              <h2 id="preview-title">Preview</h2>
-              <span id="pageCount">0 pages</span>
-            </div>
-            <div id="preview" class="preview-empty">
-              <span>Preview appears after upload</span>
-            </div>
           </section>
 
           <section class="panel output-panel" aria-labelledby="output-title">

@@ -5,16 +5,18 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 const fileInput = document.querySelector("#fileInput");
 const dropzone = document.querySelector("#dropzone");
+const dropzoneShell = document.querySelector("#dropzoneShell");
+const clearUploadButton = document.querySelector("#clearUploadButton");
 const extractButton = document.querySelector("#extractButton");
 const themeToggle = document.querySelector("#themeToggle");
 const themeIcon = document.querySelector("#themeIcon");
-const clearButton = document.querySelector("#clearButton");
 const copyButton = document.querySelector("#copyButton");
 const downloadButton = document.querySelector("#downloadButton");
 const languageSelect = document.querySelector("#languageSelect");
 const formatSelect = document.querySelector("#formatSelect");
 const embeddedTextToggle = document.querySelector("#embeddedTextToggle");
-const preview = document.querySelector("#preview");
+const autoFixCapsToggle = document.querySelector("#autoFixCapsToggle");
+const dropzonePreview = document.querySelector("#dropzonePreview");
 const outputText = document.querySelector("#outputText");
 const fileStatus = document.querySelector("#fileStatus");
 const pageCount = document.querySelector("#pageCount");
@@ -49,9 +51,131 @@ const imageTypes = new Set([
 ]);
 
 const imageExtensions = new Set(["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"]);
+const acronymWhitelist = new Set([
+  "AI",
+  "API",
+  "ASAP",
+  "CIA",
+  "CLI",
+  "CPU",
+  "CSS",
+  "CSV",
+  "DNS",
+  "ETA",
+  "EU",
+  "FAQ",
+  "FBI",
+  "FYI",
+  "GPU",
+  "GUI",
+  "HTML",
+  "HTTP",
+  "HTTPS",
+  "ID",
+  "IP",
+  "ISBN",
+  "JPEG",
+  "JSON",
+  "LLM",
+  "ML",
+  "MPEG",
+  "NASA",
+  "NATO",
+  "OCR",
+  "PDF",
+  "PHP",
+  "POST",
+  "PUT",
+  "RAM",
+  "REST",
+  "RGB",
+  "ROM",
+  "SKU",
+  "SMTP",
+  "SEO",
+  "SSH",
+  "SFTP",
+  "SVG",
+  "SQL",
+  "TCP",
+  "TLS",
+  "TBD",
+  "UUID",
+  "UDP",
+  "UI",
+  "UK",
+  "UN",
+  "UNESCO",
+  "URL",
+  "URI",
+  "USB",
+  "USA",
+  "UX",
+  "VPN",
+  "WHO",
+  "XML",
+]);
+
+const acronymStopwords = new Set([
+  "A",
+  "AN",
+  "AND",
+  "ARE",
+  "AS",
+  "AT",
+  "BE",
+  "BUT",
+  "BY",
+  "DO",
+  "FOR",
+  "FROM",
+  "HAS",
+  "HAVE",
+  "HE",
+  "HER",
+  "HIS",
+  "I",
+  "IN",
+  "IS",
+  "IT",
+  "ITS",
+  "ME",
+  "MORE",
+  "MY",
+  "NO",
+  "NOT",
+  "OF",
+  "ON",
+  "OR",
+  "OUR",
+  "SO",
+  "SHE",
+  "THE",
+  "THEIR",
+  "THEM",
+  "THEN",
+  "THERE",
+  "THIS",
+  "TO",
+  "VERY",
+  "WAS",
+  "WE",
+  "WELL",
+  "WERE",
+  "WHAT",
+  "WHEN",
+  "WHERE",
+  "WHICH",
+  "WHO",
+  "WHY",
+  "WITH",
+  "YOU",
+  "YOUR",
+]);
 
 initializeTheme();
 initializeClipboardShortcutLabel();
+initializeAutoFixCapsSetting();
 
 fileInput.addEventListener("change", (event) => {
   const [file] = event.target.files;
@@ -81,12 +205,14 @@ dropzone.addEventListener("drop", (event) => {
 
 extractButton.addEventListener("click", extractText);
 themeToggle.addEventListener("click", toggleTheme);
-clearButton.addEventListener("click", resetApp);
+clearUploadButton.addEventListener("click", resetApp);
 copyButton.addEventListener("click", copyText);
 downloadButton.addEventListener("click", downloadText);
 outputText.addEventListener("input", updateTextStats);
 formatSelect.addEventListener("change", renderExtractedText);
 document.addEventListener("paste", handlePaste);
+autoFixCapsToggle.addEventListener("change", handleAutoFixCapsChange);
+document.addEventListener("click", handleDocumentClick);
 
 function initializeTheme() {
   const savedTheme = localStorage.getItem("imageToTextTheme");
@@ -117,6 +243,29 @@ function initializeClipboardShortcutLabel() {
   clipboardShortcutText.textContent = isMacPlatform(platform) ? "Cmd" : "Ctrl";
 }
 
+function initializeAutoFixCapsSetting() {
+  const savedValue = localStorage.getItem("imageToTextAutoFixCaps");
+  autoFixCapsToggle.checked = savedValue === null ? true : savedValue === "true";
+}
+
+function handleAutoFixCapsChange() {
+  localStorage.setItem("imageToTextAutoFixCaps", String(autoFixCapsToggle.checked));
+  renderExtractedText();
+}
+
+function handleDocumentClick(event) {
+  const advancedSettings = document.querySelector(".advanced-settings");
+  if (!advancedSettings?.open) {
+    return;
+  }
+
+  if (advancedSettings.contains(event.target)) {
+    return;
+  }
+
+  advancedSettings.open = false;
+}
+
 async function loadFile(file) {
   if (!isSupportedFile(file)) {
     showToast("Choose a PDF or supported image file.", true);
@@ -130,8 +279,9 @@ async function loadFile(file) {
   setProgress("Preparing preview", 0);
   setProcessing(false);
   fileStatus.textContent = `${file.name} (${formatBytes(file.size)})`;
-  preview.className = "";
-  preview.innerHTML = "";
+  dropzonePreview.className = "dropzone-preview";
+  dropzone.classList.add("has-file");
+  dropzoneShell.classList.add("has-file");
 
   try {
     if (isPdfFile(file)) {
@@ -146,6 +296,8 @@ async function loadFile(file) {
   } catch (error) {
     console.error(error);
     showToast("Could not load that file. Try a different PDF or image.", true);
+    dropzone.classList.remove("has-file");
+    dropzoneShell.classList.remove("has-file");
     resetPreview();
   }
 }
@@ -210,7 +362,7 @@ async function renderPdfPreview(file) {
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const wrapper = document.createElement("div");
   wrapper.className = "preview-pages";
-  preview.append(wrapper);
+  dropzonePreview.append(wrapper);
 
   pageCount.textContent = `${pdf.numPages} ${pdf.numPages === 1 ? "page" : "pages"}`;
 
@@ -249,7 +401,7 @@ async function renderImagePreview(file) {
 
   const wrapper = document.createElement("div");
   wrapper.className = "preview-pages";
-  preview.append(wrapper);
+  dropzonePreview.append(wrapper);
   addPreviewPage(wrapper, canvas, "Image 1");
   state.renderedPages.push(canvas);
   pageCount.textContent = "1 page";
@@ -376,26 +528,27 @@ function getExtractionErrorMessage(error) {
 function renderExtractedText() {
   const rawText = state.extractedPages.join("\n\n").trim();
   const format = formatSelect.value;
+  const shouldFixCaps = autoFixCapsToggle.checked;
 
   if (format === "raw") {
     outputText.value = rawText;
   } else if (format === "paragraphs") {
-    outputText.value = preserveParagraphs(rawText);
+    outputText.value = preserveParagraphs(rawText, { autoFixCaps: shouldFixCaps });
   } else {
-    outputText.value = cleanCopyText(rawText);
+    outputText.value = cleanCopyText(rawText, { autoFixCaps: shouldFixCaps });
   }
 
   updateTextStats();
 }
 
-function cleanCopyText(text) {
-  return preserveParagraphs(text)
+function cleanCopyText(text, options = {}) {
+  return preserveParagraphs(text, options)
     .replace(/[ \t]{2,}/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
-function preserveParagraphs(text) {
+function preserveParagraphs(text, options = {}) {
   const normalized = text
     .replace(/\r\n/g, "\n")
     .replace(/[ \t]+\n/g, "\n")
@@ -404,17 +557,75 @@ function preserveParagraphs(text) {
 
   return normalized
     .split(/\n{2,}/)
-    .map((paragraph) =>
-      paragraph
+    .map((paragraph) => {
+      const cleanedParagraph = paragraph
         .split("\n")
         .map((line) => line.trim())
         .filter(Boolean)
         .join(" ")
-        .replace(/[ \t]{2,}/g, " "),
-    )
+        .replace(/[ \t]{2,}/g, " ");
+
+      return options.autoFixCaps ? maybeSentenceCaseParagraph(cleanedParagraph) : cleanedParagraph;
+    })
     .filter(Boolean)
     .join("\n\n")
     .trim();
+}
+
+function maybeSentenceCaseParagraph(paragraph) {
+  if (!shouldAutoFixCapsParagraph(paragraph)) {
+    return paragraph;
+  }
+
+  return sentenceCaseParagraph(paragraph);
+}
+
+function shouldAutoFixCapsParagraph(paragraph) {
+  const letters = paragraph.match(/\p{L}/gu) || [];
+  if (letters.length < 8) {
+    return false;
+  }
+
+  const uppercaseLetters = letters.filter((letter) => letter === letter.toUpperCase()).length;
+  const uppercaseRatio = uppercaseLetters / letters.length;
+  return uppercaseRatio >= 0.72;
+}
+
+function sentenceCaseParagraph(paragraph) {
+  const acronymMap = new Map();
+  const acronymPattern = /\b[A-Z]{2,6}\b/g;
+  let match;
+
+  while ((match = acronymPattern.exec(paragraph)) !== null) {
+    if (isLikelyAcronymToken(match[0])) {
+      acronymMap.set(match[0].toLowerCase(), match[0]);
+    }
+  }
+
+  let normalized = paragraph.toLowerCase();
+  normalized = normalized.replace(/(^|[.!?]\s+)([a-z\p{Ll}])/gu, (fullMatch, prefix, letter) => {
+    return `${prefix}${letter.toUpperCase()}`;
+  });
+
+  normalized = normalized.replace(/\b([a-z][a-z0-9'-]*)\b/gi, (word) => {
+    const original = acronymMap.get(word.toLowerCase());
+    return original || word;
+  });
+
+  return normalized;
+}
+
+function isLikelyAcronymToken(token) {
+  const upperToken = token.toUpperCase();
+  if (acronymWhitelist.has(upperToken)) {
+    return true;
+  }
+
+  if (acronymStopwords.has(upperToken)) {
+    return false;
+  }
+
+  return upperToken.length <= 2;
 }
 
 async function copyText() {
@@ -460,14 +671,16 @@ function resetApp() {
   extractButton.disabled = true;
   copyButton.disabled = true;
   downloadButton.disabled = true;
+  dropzone.classList.remove("has-file");
+  dropzoneShell.classList.remove("has-file");
   resetPreview();
   setProgress("Ready", 0);
   updateTextStats();
 }
 
 function resetPreview() {
-  preview.className = "preview-empty";
-  preview.innerHTML = "<span>Preview appears after upload</span>";
+  dropzonePreview.className = "dropzone-preview";
+  dropzonePreview.innerHTML = "";
 }
 
 function addPreviewPage(wrapper, media, label) {
@@ -487,6 +700,7 @@ function setProcessing(isProcessing) {
   languageSelect.disabled = isProcessing;
   formatSelect.disabled = isProcessing;
   embeddedTextToggle.disabled = isProcessing;
+  autoFixCapsToggle.disabled = isProcessing;
 }
 
 function setProgress(label, value) {

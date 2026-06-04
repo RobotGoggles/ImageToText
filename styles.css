@@ -77,20 +77,30 @@ button:disabled {
   margin-bottom: 20px;
 }
 
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--surface), var(--surface-strong));
+  color: var(--accent-dark);
+  box-shadow: var(--shadow);
+  flex: 0 0 auto;
+}
+
+.brand-mark svg {
+  width: 36px;
+  height: 36px;
+}
+
 .topbar-actions {
   position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.eyebrow {
-  margin: 0 0 5px;
-  color: var(--accent-dark);
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0;
 }
 
 h1,
@@ -99,18 +109,13 @@ h2 {
   letter-spacing: 0;
 }
 
-h1 {
-  font-size: clamp(2rem, 4vw, 3.25rem);
-  line-height: 1;
-}
-
 h2 {
   font-size: 1rem;
 }
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(300px, 1fr) minmax(340px, 1fr);
+  grid-template-columns: minmax(320px, 420px) minmax(340px, 1fr);
   gap: 16px;
   align-items: stretch;
 }
@@ -124,7 +129,6 @@ h2 {
 }
 
 .input-panel,
-.preview-panel,
 .output-panel {
   display: flex;
   flex-direction: column;
@@ -140,6 +144,13 @@ h2 {
   margin-bottom: 14px;
 }
 
+.panel-heading-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
 .panel-heading span {
   color: var(--muted);
   font-size: 0.86rem;
@@ -147,11 +158,12 @@ h2 {
 }
 
 .dropzone {
-  display: grid;
-  min-height: 230px;
-  place-items: center;
-  align-content: center;
-  gap: 10px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 440px;
+  justify-content: center;
+  gap: 14px;
   padding: 24px;
   border: 2px dashed #b6c7d9;
   border-radius: 8px;
@@ -163,8 +175,12 @@ h2 {
     transform 160ms ease;
 }
 
+.dropzone-shell {
+  position: relative;
+}
+
 .dropzone,
-#preview,
+.dropzone-preview,
 .preview-page,
 #outputText {
   transition:
@@ -189,6 +205,42 @@ h2 {
   height: 1px;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
+}
+
+.dropzone-placeholder {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0;
+}
+
+.dropzone.has-file .dropzone-placeholder {
+  display: none;
+}
+
+.dropzone-preview {
+  display: none;
+  width: 100%;
+  min-width: 0;
+}
+
+.dropzone.has-file .dropzone-preview {
+  display: block;
+}
+
+.dropzone-shell.has-file .clear-upload-button {
+  display: grid;
+}
+
+.dropzone-preview .preview-pages {
+  padding: 0;
+}
+
+.dropzone-preview .preview-page {
+  background: var(--surface);
 }
 
 .dropzone-icon {
@@ -219,6 +271,32 @@ h2 {
   color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.clear-upload-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  display: none;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.clear-upload-button:hover:not(:disabled) {
+  background: var(--surface-strong);
+}
+
+:root[data-theme="dark"] .clear-upload-button {
+  background: var(--surface);
 }
 
 .settings-grid {
@@ -277,8 +355,10 @@ h2 {
 }
 
 .gear-icon {
-  font-size: 1.38rem;
+  font-size: 1.5rem;
   line-height: 1;
+  display: block;
+  transform: translateY(-1px);
 }
 
 .advanced-settings summary::marker {
@@ -389,18 +469,6 @@ select {
   border: 1px solid var(--line);
 }
 
-#preview {
-  flex: 1;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f7fafc;
-}
-
-:root[data-theme="dark"] #preview {
-  background: #151c24;
-}
-
 .preview-empty {
   display: grid;
   place-items: center;
@@ -489,12 +557,7 @@ button:focus-visible,
 
 @media (max-width: 1120px) {
   .grid {
-    grid-template-columns: minmax(280px, 360px) minmax(420px, 1fr);
-  }
-
-  .output-panel {
-    grid-column: 1 / -1;
-    min-height: 480px;
+    grid-template-columns: 1fr;
   }
 }
 
@@ -515,8 +578,8 @@ button:focus-visible,
     min-height: auto;
   }
 
-  .preview-panel {
-    min-height: 440px;
+  .dropzone {
+    min-height: 360px;
   }
 
   #outputText {
