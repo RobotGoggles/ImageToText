@@ -24,52 +24,86 @@
             </svg>
           </div>
           <div class="topbar-actions">
-            <button
-              class="icon-button"
-              id="themeToggle"
-              type="button"
-              aria-label="Switch to dark mode"
-              title="Switch to dark mode"
-            >
-              <span id="themeIcon" aria-hidden="true">☾</span>
-            </button>
-            <button
-              class="icon-button"
-              id="bugReportButton"
-              type="button"
-              aria-label="Report a bug"
-              title="Report a bug"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M9.5 4.5 8.3 3.3a1 1 0 0 1 1.4-1.4L11 3.2a5.5 5.5 0 0 1 2 0l1.3-1.3a1 1 0 1 1 1.4 1.4l-1.2 1.2A6 6 0 0 1 17 8h2a1 1 0 1 1 0 2h-1.2l-.6 2.4A5.5 5.5 0 0 1 18 15v1h1a1 1 0 1 1 0 2h-1.3A6.5 6.5 0 0 1 10 20.8V21a1 1 0 1 1-2 0v-.2A6.5 6.5 0 0 1 4.3 18H3a1 1 0 1 1 0-2h1v-1a5.5 5.5 0 0 1 .8-2.6L4.2 10H3a1 1 0 1 1 0-2h2a6 6 0 0 1 4.5-3.5Zm.5 1.5a4 4 0 0 0-4 4v2.5a4 4 0 0 0 8 0V10a4 4 0 0 0-4-4Z" fill="currentColor"/>
-              </svg>
-            </button>
             <details class="advanced-settings">
               <summary aria-label="Advanced settings" title="Advanced settings">
-                <span class="gear-icon" aria-hidden="true">⚙</span>
+                <span class="settings-button-label">Settings</span>
               </summary>
               <div class="advanced-body">
-                <label>
-                  <span>OCR language</span>
-                  <select id="languageSelect">
-                    <option value="eng">English</option>
-                    <option value="spa">Spanish</option>
-                    <option value="fra">French</option>
-                    <option value="deu">German</option>
-                    <option value="ita">Italian</option>
-                    <option value="por">Portuguese</option>
-                  </select>
-                </label>
+                <div class="settings-section">
+                  <label>
+                    <span>Formatting</span>
+                    <select id="formatSelect">
+                      <option value="paragraphs" selected>Preserve paragraphs</option>
+                      <option value="clean">Clean copy text</option>
+                      <option value="raw">Raw OCR output</option>
+                    </select>
+                  </label>
 
-                <label class="toggle-row">
-                  <input id="embeddedTextToggle" type="checkbox" checked />
-                  <span>Use embedded PDF text when available</span>
-                </label>
+                  <label>
+                    <span>OCR language</span>
+                    <select id="languageSelect">
+                      <option value="eng">English</option>
+                      <option value="spa">Spanish</option>
+                      <option value="fra">French</option>
+                      <option value="deu">German</option>
+                      <option value="ita">Italian</option>
+                      <option value="por">Portuguese</option>
+                    </select>
+                  </label>
+                </div>
 
-                <label class="toggle-row">
-                  <input id="autoFixCapsToggle" type="checkbox" checked />
-                  <span>Auto-fix ALL CAPS OCR</span>
-                </label>
+                <div class="settings-section">
+                  <div class="settings-action-row">
+                    <span>Dark Mode</span>
+                    <button
+                      class="theme-switch toggle-switch"
+                      id="themeToggle"
+                      type="button"
+                      role="switch"
+                      aria-checked="false"
+                      aria-label="Dark mode"
+                      title="Dark mode"
+                    >
+                      <span class="toggle-switch-track" aria-hidden="true">
+                        <span class="toggle-switch-thumb"></span>
+                      </span>
+                    </button>
+                  </div>
+
+                  <label class="toggle-row toggle-switch-row">
+                    <span>Use embedded PDF text when available</span>
+                    <span class="toggle-switch">
+                      <input id="embeddedTextToggle" type="checkbox" checked />
+                      <span class="toggle-switch-track" aria-hidden="true">
+                        <span class="toggle-switch-thumb"></span>
+                      </span>
+                    </span>
+                  </label>
+
+                  <label class="toggle-row toggle-switch-row">
+                    <span>Auto-fix ALL CAPS OCR</span>
+                    <span class="toggle-switch">
+                      <input id="autoFixCapsToggle" type="checkbox" checked />
+                      <span class="toggle-switch-track" aria-hidden="true">
+                        <span class="toggle-switch-thumb"></span>
+                      </span>
+                    </span>
+                  </label>
+
+                  <label class="toggle-row toggle-switch-row">
+                    <span>Show paragraph separators</span>
+                    <span class="toggle-switch">
+                      <input id="showParagraphSeparatorsToggle" type="checkbox" checked />
+                      <span class="toggle-switch-track" aria-hidden="true">
+                        <span class="toggle-switch-thumb"></span>
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                <button class="bug-report-text-button" id="bugReportButton" type="button">
+                  Report a bug
+                </button>
               </div>
             </details>
           </div>
@@ -117,26 +151,12 @@
               </div>
             </div>
 
-            <div class="settings-grid">
-              <label>
-                <span>Formatting</span>
-                <select id="formatSelect">
-                  <option value="paragraphs" selected>Preserve paragraphs</option>
-                  <option value="clean">Clean copy text</option>
-                  <option value="raw">Raw OCR output</option>
-                </select>
-              </label>
-            </div>
-
           </section>
 
           <section class="panel output-panel" aria-labelledby="output-title">
             <div class="panel-heading">
               <div class="panel-heading-meta">
                 <h2 id="output-title">Extracted Text</h2>
-                <span id="proofreadModeIndicator" class="proofread-mode-indicator" aria-hidden="true">
-                  Proofread mode active
-                </span>
               </div>
               <span id="textStats">0 characters</span>
             </div>
@@ -150,8 +170,8 @@
               <section class="proofread-panel" aria-labelledby="proofread-title" hidden>
                 <div class="proofread-header">
                   <div>
-                    <h3 id="proofread-title">Proofreading</h3>
-                    <span id="proofreadStatus" aria-live="polite">Run Proofread to review suggestions</span>
+                    <h3 id="proofread-title">Proofread</h3>
+                    <span id="proofreadStatus" aria-live="polite">Run export preview to review suggestions</span>
                   </div>
                 </div>
 
@@ -164,11 +184,17 @@
               </section>
             </div>
             <div class="actions">
-              <button class="secondary-button" id="proofreadButton" type="button" aria-pressed="false" disabled>
-                Proofread
+              <button class="mode-switch" id="proofreadButton" type="button" role="switch" aria-checked="false" disabled>
+                <span class="mode-switch-label">Export preview</span>
+                <span class="mode-switch-track" aria-hidden="true">
+                  <span class="mode-switch-thumb"></span>
+                </span>
               </button>
               <button class="secondary-button" id="copyButton" type="button" disabled>
                 Copy Text
+              </button>
+              <button class="secondary-button" id="exportCxAlloyButton" type="button" disabled>
+                Export CxAlloy
               </button>
               <button class="secondary-button" id="downloadButton" type="button" disabled>
                 Download TXT

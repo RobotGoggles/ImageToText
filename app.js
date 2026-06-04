@@ -8,9 +8,9 @@ const dropzone = document.querySelector("#dropzone");
 const dropzoneShell = document.querySelector("#dropzoneShell");
 const clearUploadButton = document.querySelector("#clearUploadButton");
 const themeToggle = document.querySelector("#themeToggle");
-const themeIcon = document.querySelector("#themeIcon");
 const bugReportButton = document.querySelector("#bugReportButton");
 const copyButton = document.querySelector("#copyButton");
+const exportCxAlloyButton = document.querySelector("#exportCxAlloyButton");
 const downloadButton = document.querySelector("#downloadButton");
 const proofreadButton = document.querySelector("#proofreadButton");
 const proofreadStatus = document.querySelector("#proofreadStatus");
@@ -19,6 +19,7 @@ const languageSelect = document.querySelector("#languageSelect");
 const formatSelect = document.querySelector("#formatSelect");
 const embeddedTextToggle = document.querySelector("#embeddedTextToggle");
 const autoFixCapsToggle = document.querySelector("#autoFixCapsToggle");
+const showParagraphSeparatorsToggle = document.querySelector("#showParagraphSeparatorsToggle");
 const dropzonePreview = document.querySelector("#dropzonePreview");
 const outputEditor = document.querySelector(".output-editor");
 const outputMirror = document.querySelector("#outputMirror");
@@ -38,6 +39,9 @@ const state = {
   renderedPages: [],
   extractedPages: [],
   isProcessing: false,
+  exportPreview: {
+    dismissedKeys: new Set(),
+  },
   proofread: {
     requestId: 0,
     sourceText: "",
@@ -52,6 +56,11 @@ const state = {
     isEnabled: false,
   },
 };
+
+let isSyncingOutputScroll = false;
+let outputScrollTop = 0;
+let outputScrollLeft = 0;
+let outputScrollRestoreFrame = 0;
 
 let tesseractModulePromise = null;
 
@@ -199,6 +208,7 @@ const acronymStopwords = new Set([
 initializeTheme();
 initializeClipboardShortcutLabel();
 initializeAutoFixCapsSetting();
+initializeParagraphSeparatorsSetting();
 
 fileInput.addEventListener("change", (event) => {
   const [file] = event.target.files;
@@ -230,14 +240,17 @@ themeToggle.addEventListener("click", toggleTheme);
 bugReportButton.addEventListener("click", reportBug);
 clearUploadButton.addEventListener("click", resetApp);
 copyButton.addEventListener("click", copyText);
+exportCxAlloyButton.addEventListener("click", exportCxAlloyWorkbook);
 downloadButton.addEventListener("click", downloadText);
 proofreadButton.addEventListener("click", toggleProofreadingMode);
 outputText.addEventListener("input", updateTextStats);
 outputText.addEventListener("input", handleOutputTextInput);
-outputText.addEventListener("scroll", syncOutputMirrorScroll);
+outputText.addEventListener("scroll", handleOutputScroll);
+outputMirror.addEventListener("scroll", handleOutputScroll);
 formatSelect.addEventListener("change", renderExtractedText);
 document.addEventListener("paste", handlePaste);
 autoFixCapsToggle.addEventListener("change", handleAutoFixCapsChange);
+showParagraphSeparatorsToggle.addEventListener("change", handleParagraphSeparatorsChange);
 document.addEventListener("click", handleDocumentClick);
 outputMirror.addEventListener("click", handleOutputMirrorClick);
 
@@ -251,6 +264,128 @@ function toggleTheme() {
   const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   setStoredValue("imageToTextTheme", nextTheme);
   applyTheme(nextTheme);
+}
+
+async function exportCxAlloyWorkbook() {
+  const description = outputText.value.trim();
+  if (!description) {
+    return;
+  }
+
+  try {
+    const XLSX = await getSheetJsModule();
+    const rows = buildCxAlloyRowsFromText(description, {
+      dismissedKeys: state.exportPreview.dismissedKeys,
+    });
+    if (rows.length === 0) {
+      showToast("No text lines were available to export.", true);
+      return;
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(rows, {
+      header: ["Line Type", "Description"],
+    });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "CxAlloy Import");
+
+    const defaultFileName = getDefaultCxAlloyExportName();
+    const chosenFileName = window.prompt("Save CxAlloy export as:", defaultFileName);
+    if (chosenFileName === null) {
+      return;
+    }
+
+    const finalFileName = normalizeExportFileName(chosenFileName, defaultFileName);
+    XLSX.writeFile(workbook, finalFileName);
+    showToast("CxAlloy workbook exported.");
+  } catch (error) {
+    console.error(error);
+    showToast("Could not export the CxAlloy workbook.", true);
+  }
+}
+
+function getDefaultCxAlloyExportName() {
+  const sourceName = state.file?.name?.replace(/\.[^.]+$/, "") || "extracted-text";
+  return `${sourceName}-cxalloy.xlsx`;
+}
+
+function normalizeExportFileName(fileName, fallbackFileName) {
+  const trimmed = String(fileName || "").trim();
+  const candidate = trimmed || fallbackFileName;
+  const sanitized = candidate.replace(/[\\/:*?"<>|]+/g, "-");
+  return /\.xlsx$/i.test(sanitized) ? sanitized : `${sanitized}.xlsx`;
+}
+
+function buildCxAlloyRowsFromText(text, options = {}) {
+  return buildCxAlloyPreviewRows(text)
+    .filter((row) => !getCxAlloyDismissedKeys(options).has(row.key))
+    .map((row) => ({
+      "Line Type": "Information",
+      Description: row.text,
+    }));
+}
+
+function getCxAlloyDismissedKeys(options = {}) {
+  return options.dismissedKeys instanceof Set ? options.dismissedKeys : new Set();
+}
+
+function buildCxAlloyPreviewRows(text) {
+  const normalized = text.replace(/\r\n/g, "\n");
+  const rows = [];
+  let cursor = 0;
+  let rowIndex = 0;
+
+  while (cursor <= normalized.length) {
+    const lineBreakIndex = normalized.indexOf("\n", cursor);
+    const lineEnd = lineBreakIndex === -1 ? normalized.length : lineBreakIndex;
+    const line = normalized.slice(cursor, lineEnd);
+    const trimmed = line.trim();
+
+    if (trimmed) {
+      const leadingWhitespace = line.length - line.trimStart().length;
+      const trailingWhitespace = line.length - line.trimEnd().length;
+      const start = cursor + leadingWhitespace;
+      const end = lineEnd - trailingWhitespace;
+
+      rows.push({
+        key: createCxAlloyRowKey(rowIndex),
+        text: normalized.slice(start, end),
+        start,
+        end,
+      });
+      rowIndex += 1;
+    }
+
+    if (lineBreakIndex === -1) {
+      break;
+    }
+
+    cursor = lineBreakIndex + 1;
+  }
+
+  return rows;
+}
+
+function createCxAlloyRowKey(index) {
+  return `cx-row-${index}`;
+}
+
+function toggleCxAlloyPreviewRow(key) {
+  if (!key) {
+    return;
+  }
+
+  if (state.exportPreview.dismissedKeys.has(key)) {
+    state.exportPreview.dismissedKeys.delete(key);
+  } else {
+    state.exportPreview.dismissedKeys.add(key);
+  }
+
+  renderOutputMirror();
+  updateTextStats();
+}
+
+function clearCxAlloyPreviewRemovals() {
+  state.exportPreview.dismissedKeys = new Set();
 }
 
 function reportBug() {
@@ -294,9 +429,9 @@ function buildBugReportUrl() {
 function applyTheme(theme) {
   const isDark = theme === "dark";
   document.documentElement.dataset.theme = isDark ? "dark" : "light";
-  themeIcon.textContent = isDark ? "☀" : "☾";
-  themeToggle.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
-  themeToggle.title = isDark ? "Switch to light mode" : "Switch to dark mode";
+  themeToggle.setAttribute("aria-checked", String(isDark));
+  themeToggle.setAttribute("aria-label", "Dark mode");
+  themeToggle.title = "Dark mode";
 }
 
 function initializeClipboardShortcutLabel() {
@@ -318,6 +453,16 @@ function handleAutoFixCapsChange() {
   renderExtractedText();
 }
 
+function initializeParagraphSeparatorsSetting() {
+  const savedValue = getStoredValue("imageToTextShowParagraphSeparators");
+  showParagraphSeparatorsToggle.checked = savedValue === null ? true : savedValue === "true";
+}
+
+function handleParagraphSeparatorsChange() {
+  setStoredValue("imageToTextShowParagraphSeparators", String(showParagraphSeparatorsToggle.checked));
+  renderOutputMirror();
+}
+
 function getStoredValue(key) {
   try {
     return localStorage.getItem(key);
@@ -332,6 +477,15 @@ function setStoredValue(key, value) {
   } catch {
     // Ignore storage failures in restricted browser contexts.
   }
+}
+
+async function getSheetJsModule() {
+  if (!window.__sheetJsModulePromise) {
+    window.__sheetJsModulePromise = import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm");
+  }
+
+  const module = await window.__sheetJsModulePromise;
+  return module?.default || module;
 }
 
 function handleDocumentClick(event) {
@@ -361,6 +515,7 @@ async function loadFile(file) {
   }
 
   state.file = file;
+  clearCxAlloyPreviewRemovals();
   setProofreadingMode(false);
   state.renderedPages = [];
   state.extractedPages = [];
@@ -419,6 +574,15 @@ async function toggleProofreadingMode() {
   await checkProofreading();
 }
 
+async function enableProofreadingAfterExtraction() {
+  if (!outputText.value.trim()) {
+    return;
+  }
+
+  setProofreadingMode(true);
+  await checkProofreading();
+}
+
 async function extractText() {
   if (!state.file || state.isProcessing) {
     return;
@@ -427,7 +591,9 @@ async function extractText() {
   setProcessing(true);
   state.extractedPages = [];
   outputText.value = "";
+  clearCxAlloyPreviewRemovals();
   updateTextStats();
+  let shouldEnterProofreadMode = false;
 
   try {
     if (isPdfFile(state.file) && embeddedTextToggle.checked) {
@@ -438,6 +604,7 @@ async function extractText() {
         renderExtractedText();
         setProgress("Embedded PDF text extracted", 100);
         showToast("Text extracted from the PDF.");
+        shouldEnterProofreadMode = true;
         return;
       }
     }
@@ -450,12 +617,17 @@ async function extractText() {
     renderExtractedText();
     setProgress("OCR complete", 100);
     showToast("Text is ready to copy.");
+    shouldEnterProofreadMode = true;
   } catch (error) {
     console.error(error);
     setProgress(getExtractionErrorMessage(error), 0);
     showToast(getExtractionErrorMessage(error), true);
   } finally {
     setProcessing(false);
+  }
+
+  if (shouldEnterProofreadMode) {
+    await enableProofreadingAfterExtraction();
   }
 }
 
@@ -631,6 +803,7 @@ function renderExtractedText() {
   const rawText = state.extractedPages.join("\n\n").trim();
   const format = formatSelect.value;
   const shouldFixCaps = autoFixCapsToggle.checked;
+  clearCxAlloyPreviewRemovals();
 
   if (format === "raw") {
     outputText.value = rawText;
@@ -643,6 +816,10 @@ function renderExtractedText() {
   clearProofreadingResults({ keepMessage: false });
   renderOutputMirror();
   updateTextStats();
+
+  if (state.proofread.isEnabled && !state.isProcessing && outputText.value.trim()) {
+    void checkProofreading();
+  }
 }
 
 function cleanCopyText(text, options = {}) {
@@ -734,6 +911,7 @@ function isLikelyAcronymToken(token) {
 
 function handleOutputTextInput() {
   const currentText = outputText.value;
+  clearCxAlloyPreviewRemovals();
   updateTextStats();
   renderOutputMirror();
 
@@ -741,7 +919,7 @@ function handleOutputTextInput() {
     return;
   }
 
-  markProofreadingStale("Text changed. Run Proofread again to refresh suggestions.");
+  markProofreadingStale("Text changed. Run export preview again to refresh suggestions.");
 }
 
 async function checkProofreading() {
@@ -796,10 +974,12 @@ async function checkProofreading() {
 }
 
 function setProofreadingMode(isEnabled) {
+  captureOutputScrollPosition();
   state.proofread.isEnabled = isEnabled;
   proofreadButton.classList.toggle("is-active", isEnabled);
+  proofreadButton.setAttribute("aria-checked", String(isEnabled));
   proofreadButton.setAttribute("aria-pressed", String(isEnabled));
-  proofreadButton.title = isEnabled ? "Exit proofreading mode" : "Enter proofreading mode";
+  proofreadButton.title = isEnabled ? "Switch to edit mode" : "Switch to export preview";
   outputText.readOnly = isEnabled;
   if (proofreadModeIndicator) {
     proofreadModeIndicator.classList.toggle("is-active", isEnabled);
@@ -812,6 +992,8 @@ function setProofreadingMode(isEnabled) {
     clearProofreadFocus();
     proofreadPanel.hidden = true;
   }
+
+  scheduleOutputScrollRestore();
 }
 
 async function runLanguageToolChecks(text, requestId) {
@@ -1051,7 +1233,7 @@ function renderProofreadingState({ status, groups, isChecking, isError = false }
   const activeGroup = visibleGroups.find((group) => createProofreadGroupKey(group) === state.proofread.activeKey) || null;
   const displayStatus =
     state.proofread.isStale && !isChecking
-      ? "Text changed. Run Proofread again to refresh suggestions."
+      ? "Text changed. Run export preview again to refresh suggestions."
       : status;
 
   proofreadStatus.textContent = isChecking ? status : activeGroup ? displayStatus : status;
@@ -1135,7 +1317,7 @@ function createProofreadCard(group, isStale = false) {
   const dismissButton = document.createElement("button");
   dismissButton.type = "button";
   dismissButton.className = "ghost-button proofread-dismiss";
-  dismissButton.textContent = "Dismiss";
+  dismissButton.textContent = "Ignore";
   dismissButton.addEventListener("click", () => dismissProofreadGroup(group));
   dismissButton.disabled = isStale;
 
@@ -1170,6 +1352,41 @@ function createProofreadCard(group, isStale = false) {
     }
   }
 
+  const customRow = document.createElement("div");
+  customRow.className = "proofread-custom-replacement";
+
+  const customLabel = document.createElement("span");
+  customLabel.className = "proofread-custom-label";
+  customLabel.textContent = "Custom replacement";
+
+  const customControls = document.createElement("div");
+  customControls.className = "proofread-custom-controls";
+
+  const customInput = document.createElement("input");
+  customInput.type = "text";
+  customInput.className = "proofread-custom-input";
+  customInput.placeholder = "Type your own replacement";
+  customInput.disabled = isStale;
+  customInput.setAttribute("aria-label", "Custom replacement");
+  customInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.preventDefault();
+    applyCustomProofreadReplacement(group, customInput);
+  });
+
+  const customButton = document.createElement("button");
+  customButton.type = "button";
+  customButton.className = "secondary-button proofread-custom-apply";
+  customButton.textContent = "Apply";
+  customButton.disabled = isStale;
+  customButton.addEventListener("click", () => applyCustomProofreadReplacement(group, customInput));
+
+  customControls.append(customInput, customButton);
+  customRow.append(customLabel, customControls);
+
   const occurrenceSummary = document.createElement("span");
   occurrenceSummary.className = "proofread-note";
   occurrenceSummary.textContent =
@@ -1177,7 +1394,7 @@ function createProofreadCard(group, isStale = false) {
       ? `Applies to ${group.matches.length} matching occurrences.`
       : "Applies to 1 occurrence.";
 
-  card.append(header, context, occurrenceSummary, replacementRow);
+  card.append(header, context, occurrenceSummary, replacementRow, customRow);
   return card;
 }
 
@@ -1196,6 +1413,15 @@ function updateProofreadPanelVisibility() {
   proofreadPanel.hidden = !shouldShow;
 }
 
+function applyCustomProofreadReplacement(group, input) {
+  const replacement = input.value.trim();
+  if (!replacement) {
+    return;
+  }
+
+  applyProofreadReplacement(group, replacement);
+}
+
 function renderOutputMirror() {
   if (!outputMirror) {
     return;
@@ -1207,13 +1433,21 @@ function renderOutputMirror() {
   const isProofreadingMode = state.proofread.isEnabled;
   if (outputEditor) {
     outputEditor.classList.toggle("is-proofreading", isProofreadingMode);
+    outputEditor.classList.toggle("has-paragraph-separators", Boolean(showParagraphSeparatorsToggle?.checked));
   }
   outputText.readOnly = isProofreadingMode;
   const highlights = collectProofreadHighlights(text, visibleGroups);
 
   outputMirror.replaceChildren();
-  outputMirror.append(buildHighlightedFragment(text, highlights));
-  syncOutputMirrorScroll();
+  outputMirror.append(
+    buildMirrorFragment(
+      text,
+      highlights,
+      showParagraphSeparatorsToggle?.checked,
+      isProofreadingMode,
+    ),
+  );
+  restoreOutputScrollPosition();
   updateProofreadPanelVisibility();
 }
 
@@ -1269,42 +1503,194 @@ function mergeProofreadHighlights(highlights) {
   return merged;
 }
 
-function buildHighlightedFragment(text, highlights) {
+function buildMirrorFragment(text, highlights, showParagraphSeparators = false, isProofreadingMode = false) {
   const fragment = document.createDocumentFragment();
 
   if (!text) {
     return fragment;
   }
 
+  const proofreadRows = isProofreadingMode ? buildCxAlloyPreviewRows(text) : [];
+
+  if (isProofreadingMode) {
+    proofreadRows.forEach((row, index) => {
+      const rowHidden = state.exportPreview.dismissedKeys.has(row.key);
+      const rowElement = document.createElement("div");
+      rowElement.className = "mirror-export-row";
+      if (showParagraphSeparators && index > 0) {
+        rowElement.classList.add("has-separator");
+      }
+      if (rowHidden) {
+        rowElement.classList.add("is-removed");
+      }
+
+      const lineType = document.createElement("span");
+      lineType.className = "mirror-line-type";
+      lineType.textContent = "Information";
+
+      const description = document.createElement("span");
+      description.className = "mirror-line-description";
+      appendHighlightedParagraphText(description, row.text, row.start, highlights);
+
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "mirror-row-toggle";
+      toggle.dataset.cxRowKey = row.key;
+      toggle.setAttribute("aria-label", rowHidden ? "Restore row to export" : "Remove row from export");
+      toggle.title = rowHidden ? "Restore row to export" : "Remove row from export";
+      toggle.textContent = rowHidden ? "↺" : "×";
+      toggle.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleCxAlloyPreviewRow(row.key);
+      });
+
+      rowElement.append(lineType, description, toggle);
+      fragment.append(rowElement);
+    });
+    return fragment;
+  }
+
+  const normalized = text.replace(/\r\n/g, "\n");
+  const parts = normalized.split(/(\n{2,})/);
+  const paragraphs = [];
+  let paragraphText = "";
+  let paragraphStart = 0;
+  let position = 0;
+
+  const flushParagraph = () => {
+    if (!paragraphText) {
+      return;
+    }
+
+    paragraphs.push({
+      text: paragraphText,
+      start: paragraphStart,
+      end: paragraphStart + paragraphText.length,
+    });
+    paragraphText = "";
+  };
+
+  for (const part of parts) {
+    if (!part) {
+      continue;
+    }
+
+    if (/\n{2,}/.test(part)) {
+      flushParagraph();
+      position += part.length;
+      continue;
+    }
+
+    if (!paragraphText) {
+      paragraphStart = position;
+    }
+
+    paragraphText += part;
+    position += part.length;
+  }
+
+  flushParagraph();
+
+  if (paragraphs.length === 0) {
+    paragraphs.push({ text: normalized, start: 0, end: normalized.length });
+  }
+
+  paragraphs.forEach((paragraph, index) => {
+    const paragraphNode = document.createElement("div");
+    paragraphNode.className = "mirror-paragraph";
+    if (showParagraphSeparators && index > 0) {
+      paragraphNode.classList.add("has-separator");
+    }
+
+    appendHighlightedParagraphText(paragraphNode, paragraph.text, paragraph.start, highlights);
+    fragment.append(paragraphNode);
+  });
+
+  return fragment;
+}
+
+function appendHighlightedParagraphText(container, text, paragraphStart, highlights) {
   let cursor = 0;
-  for (const highlight of highlights) {
-    if (highlight.start > cursor) {
-      fragment.append(document.createTextNode(text.slice(cursor, highlight.start)));
+  const paragraphEnd = paragraphStart + text.length;
+  const relevantHighlights = highlights.filter((highlight) => highlight.start < paragraphEnd && highlight.end > paragraphStart);
+
+  for (const highlight of relevantHighlights) {
+    const localStart = Math.max(highlight.start, paragraphStart) - paragraphStart;
+    const localEnd = Math.min(highlight.end, paragraphEnd) - paragraphStart;
+
+    if (localStart > cursor) {
+      container.append(document.createTextNode(text.slice(cursor, localStart)));
     }
 
     const span = document.createElement("span");
     span.className = "output-highlight";
     span.dataset.proofreadKey = highlight.key;
-    span.textContent = text.slice(highlight.start, highlight.end);
-    span.addEventListener("pointerdown", () => outputText.focus());
-    fragment.append(span);
-    cursor = highlight.end;
+    span.textContent = text.slice(localStart, localEnd);
+    container.append(span);
+    cursor = localEnd;
   }
 
   if (cursor < text.length) {
-    fragment.append(document.createTextNode(text.slice(cursor)));
+    container.append(document.createTextNode(text.slice(cursor)));
   }
-
-  return fragment;
 }
 
-function syncOutputMirrorScroll() {
-  if (!outputMirror) {
+function handleOutputScroll(event) {
+  if (!outputText || !outputMirror || isSyncingOutputScroll) {
     return;
   }
 
-  outputMirror.scrollTop = outputText.scrollTop;
-  outputMirror.scrollLeft = outputText.scrollLeft;
+  const source = event.currentTarget;
+  const target = source === outputText ? outputMirror : outputText;
+  if (!target) {
+    return;
+  }
+
+  outputScrollTop = source.scrollTop;
+  outputScrollLeft = source.scrollLeft;
+
+  isSyncingOutputScroll = true;
+  target.scrollTop = outputScrollTop;
+  target.scrollLeft = outputScrollLeft;
+  isSyncingOutputScroll = false;
+}
+
+function captureOutputScrollPosition() {
+  const source = state.proofread.isEnabled ? outputMirror : outputText;
+  if (!source) {
+    return;
+  }
+
+  outputScrollTop = source.scrollTop;
+  outputScrollLeft = source.scrollLeft;
+}
+
+function scheduleOutputScrollRestore() {
+  if (outputScrollRestoreFrame) {
+    cancelAnimationFrame(outputScrollRestoreFrame);
+    outputScrollRestoreFrame = 0;
+  }
+
+  outputScrollRestoreFrame = requestAnimationFrame(() => {
+    outputScrollRestoreFrame = requestAnimationFrame(() => {
+      outputScrollRestoreFrame = 0;
+      restoreOutputScrollPosition();
+    });
+  });
+}
+
+function restoreOutputScrollPosition() {
+  if (!outputText || !outputMirror || isSyncingOutputScroll) {
+    return;
+  }
+
+  isSyncingOutputScroll = true;
+  outputText.scrollTop = outputScrollTop;
+  outputText.scrollLeft = outputScrollLeft;
+  outputMirror.scrollTop = outputScrollTop;
+  outputMirror.scrollLeft = outputScrollLeft;
+  isSyncingOutputScroll = false;
 }
 
 function handleOutputMirrorClick(event) {
@@ -1313,12 +1699,9 @@ function handleOutputMirrorClick(event) {
     return;
   }
 
+  event.preventDefault();
   event.stopPropagation();
   activateProofreadGroup(target.dataset.proofreadKey);
-}
-
-function handleOutputMirrorPointerDown() {
-  outputText.focus();
 }
 
 function activateProofreadGroup(key) {
@@ -1340,9 +1723,6 @@ function syncActiveProofreadCard() {
   cards.forEach((card) => {
     const isActive = card.dataset.proofreadKey === state.proofread.activeKey;
     card.classList.toggle("is-active", isActive);
-    if (isActive) {
-      card.scrollIntoView({ block: "nearest" });
-    }
   });
 }
 
@@ -1386,7 +1766,7 @@ async function applyProofreadReplacement(group, replacement) {
 
   state.proofread.groups = remainingGroups;
   state.proofread.matches = remainingGroups.flatMap((entry) => entry.matches);
-  state.proofread.activeKey = remainingGroups[0] ? createProofreadGroupKey(remainingGroups[0]) : "";
+  state.proofread.activeKey = "";
 
   renderProofreadingState({
     status:
@@ -1410,15 +1790,15 @@ function clearProofreadingResults(options = {}) {
   state.proofread.activeKey = "";
 
   if (options.keepMessage) {
-    proofreadStatus.textContent = options.message || "Run Proofread to review suggestions";
+    proofreadStatus.textContent = options.message || "Run export preview to review suggestions";
   } else {
-    proofreadStatus.textContent = options.message || "Run Proofread to review suggestions";
+    proofreadStatus.textContent = options.message || "Run export preview to review suggestions";
   }
 
   proofreadStatus.dataset.error = "false";
   proofreadButton.disabled = !outputText.value.trim();
   updateProofreadPanelVisibility();
-  proofreadList.replaceChildren(createProofreadEmptyState("Run Proofread to review suggestions."));
+  proofreadList.replaceChildren(createProofreadEmptyState("Run export preview to review suggestions."));
   renderOutputMirror();
 }
 
@@ -1432,7 +1812,7 @@ function markProofreadingStale(message) {
       ...state.proofread.groups.map((group) => createProofreadCard(group, true)),
     );
   } else {
-    proofreadList.replaceChildren(createProofreadEmptyState("Run Proofread to review suggestions."));
+    proofreadList.replaceChildren(createProofreadEmptyState("Run export preview to review suggestions."));
   }
   updateProofreadPanelVisibility();
   renderOutputMirror();
@@ -1448,7 +1828,7 @@ function getProofreadingErrorMessage(error) {
     return "LanguageTool could not be reached. Check your connection and try again.";
   }
 
-  return "Proofreading failed. Please try again.";
+  return "Export preview failed. Please try again.";
 }
 
 async function copyText() {
@@ -1487,11 +1867,13 @@ function resetApp() {
   state.renderedPages = [];
   state.extractedPages = [];
   state.isProcessing = false;
+  clearCxAlloyPreviewRemovals();
   fileInput.value = "";
   outputText.value = "";
   fileStatus.textContent = "No file selected";
   pageCount.textContent = "0 pages";
   copyButton.disabled = true;
+  exportCxAlloyButton.disabled = true;
   downloadButton.disabled = true;
   dropzone.classList.remove("has-file");
   dropzoneShell.classList.remove("has-file");
@@ -1526,6 +1908,7 @@ function setProcessing(isProcessing) {
   embeddedTextToggle.disabled = isProcessing;
   autoFixCapsToggle.disabled = isProcessing;
   proofreadButton.disabled = isProcessing || !outputText.value.trim();
+  exportCxAlloyButton.disabled = isProcessing || !outputText.value.trim();
 }
 
 function setProgress(label, value) {
@@ -1549,8 +1932,14 @@ function setProgress(label, value) {
 
 function updateTextStats() {
   const length = outputText.value.length;
-  textStats.textContent = `${length.toLocaleString()} ${length === 1 ? "character" : "characters"}`;
+  const rowCount = buildCxAlloyRowsFromText(outputText.value, {
+    dismissedKeys: state.exportPreview.dismissedKeys,
+  }).length;
+  const characterLabel = length === 1 ? "character" : "characters";
+  const rowLabel = rowCount === 1 ? "row" : "rows";
+  textStats.textContent = `${length.toLocaleString()} ${characterLabel} · ${rowCount.toLocaleString()} CxAlloy ${rowLabel}`;
   copyButton.disabled = length === 0;
+  exportCxAlloyButton.disabled = length === 0 || rowCount === 0 || state.isProcessing;
   downloadButton.disabled = length === 0;
   if (!state.isProcessing && !state.proofread.isChecking) {
     proofreadButton.disabled = length === 0;
