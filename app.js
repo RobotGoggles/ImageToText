@@ -21,6 +21,7 @@ const pageCount = document.querySelector("#pageCount");
 const textStats = document.querySelector("#textStats");
 const buttonLabel = document.querySelector("#buttonLabel");
 const buttonProgress = document.querySelector("#buttonProgress");
+const clipboardShortcutText = document.querySelector("#clipboardShortcutText");
 
 const state = {
   file: null,
@@ -50,6 +51,7 @@ const imageTypes = new Set([
 const imageExtensions = new Set(["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"]);
 
 initializeTheme();
+initializeClipboardShortcutLabel();
 
 fileInput.addEventListener("change", (event) => {
   const [file] = event.target.files;
@@ -104,6 +106,15 @@ function applyTheme(theme) {
   themeIcon.textContent = isDark ? "☀" : "☾";
   themeToggle.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
   themeToggle.title = isDark ? "Switch to light mode" : "Switch to dark mode";
+}
+
+function initializeClipboardShortcutLabel() {
+  if (!clipboardShortcutText) {
+    return;
+  }
+
+  const platform = getPlatformName();
+  clipboardShortcutText.textContent = isMacPlatform(platform) ? "Cmd" : "Ctrl";
 }
 
 async function loadFile(file) {
@@ -518,20 +529,29 @@ function getFileExtension(fileName) {
 
 function getClipboardImageFile(event) {
   const items = Array.from(event.clipboardData?.items || []);
-  const imageItem = items.find((item) => item.type.startsWith("image/"));
-  const file = imageItem?.getAsFile();
-  if (file) {
-    const extension = file.type.split("/")[1] || "png";
-    return new File([file], `clipboard-image.${extension}`, { type: file.type || "image/png" });
-  }
+  return getClipboardImageFileFromItems(items);
+}
 
-  const fileFromList = Array.from(event.clipboardData?.files || []).find((item) =>
-    item.type.startsWith("image/"),
-  );
-  if (fileFromList) {
-    const extension = fileFromList.type.split("/")[1] || "png";
-    return new File([fileFromList], `clipboard-image.${extension}`, {
-      type: fileFromList.type || "image/png",
+function getPlatformName() {
+  return (
+    navigator.userAgentData?.platform ||
+    navigator.platform ||
+    navigator.userAgent ||
+    ""
+  ).toLowerCase();
+}
+
+function isMacPlatform(platformName) {
+  return /mac|iphone|ipad|ipod/.test(platformName);
+}
+
+function getClipboardImageFileFromItems(items) {
+  const imageItem = items.find((item) => item.type?.startsWith("image/") && item.kind === "file");
+  const file = imageItem?.getAsFile?.();
+  if (file) {
+    const extension = file.type?.split("/")[1] || "png";
+    return new File([file], `clipboard-image.${extension === "jpeg" ? "jpg" : extension}`, {
+      type: file.type || "image/png",
     });
   }
 
