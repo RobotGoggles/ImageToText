@@ -11,7 +11,6 @@ const themeToggle = document.querySelector("#themeToggle");
 const bugReportButton = document.querySelector("#bugReportButton");
 const copyButton = document.querySelector("#copyButton");
 const exportCxAlloyButton = document.querySelector("#exportCxAlloyButton");
-const downloadButton = document.querySelector("#downloadButton");
 const proofreadButton = document.querySelector("#proofreadButton");
 const proofreadStatus = document.querySelector("#proofreadStatus");
 const proofreadList = document.querySelector("#proofreadList");
@@ -19,7 +18,6 @@ const languageSelect = document.querySelector("#languageSelect");
 const formatSelect = document.querySelector("#formatSelect");
 const embeddedTextToggle = document.querySelector("#embeddedTextToggle");
 const autoFixCapsToggle = document.querySelector("#autoFixCapsToggle");
-const showParagraphSeparatorsToggle = document.querySelector("#showParagraphSeparatorsToggle");
 const dropzonePreview = document.querySelector("#dropzonePreview");
 const outputEditor = document.querySelector(".output-editor");
 const outputMirror = document.querySelector("#outputMirror");
@@ -61,6 +59,7 @@ let isSyncingOutputScroll = false;
 let outputScrollTop = 0;
 let outputScrollLeft = 0;
 let outputScrollRestoreFrame = 0;
+let proofreadActionFitFrame = 0;
 
 let tesseractModulePromise = null;
 
@@ -208,7 +207,6 @@ const acronymStopwords = new Set([
 initializeTheme();
 initializeClipboardShortcutLabel();
 initializeAutoFixCapsSetting();
-initializeParagraphSeparatorsSetting();
 
 fileInput.addEventListener("change", (event) => {
   const [file] = event.target.files;
@@ -241,7 +239,6 @@ bugReportButton.addEventListener("click", reportBug);
 clearUploadButton.addEventListener("click", resetApp);
 copyButton.addEventListener("click", copyText);
 exportCxAlloyButton.addEventListener("click", exportCxAlloyWorkbook);
-downloadButton.addEventListener("click", downloadText);
 proofreadButton.addEventListener("click", toggleProofreadingMode);
 outputText.addEventListener("input", updateTextStats);
 outputText.addEventListener("input", handleOutputTextInput);
@@ -250,9 +247,9 @@ outputMirror.addEventListener("scroll", handleOutputScroll);
 formatSelect.addEventListener("change", renderExtractedText);
 document.addEventListener("paste", handlePaste);
 autoFixCapsToggle.addEventListener("change", handleAutoFixCapsChange);
-showParagraphSeparatorsToggle.addEventListener("change", handleParagraphSeparatorsChange);
 document.addEventListener("click", handleDocumentClick);
 outputMirror.addEventListener("click", handleOutputMirrorClick);
+window.addEventListener("resize", scheduleProofreadActionButtonFit);
 
 function initializeTheme() {
   const savedTheme = getStoredValue("imageToTextTheme");
@@ -453,16 +450,6 @@ function handleAutoFixCapsChange() {
   renderExtractedText();
 }
 
-function initializeParagraphSeparatorsSetting() {
-  const savedValue = getStoredValue("imageToTextShowParagraphSeparators");
-  showParagraphSeparatorsToggle.checked = savedValue === null ? true : savedValue === "true";
-}
-
-function handleParagraphSeparatorsChange() {
-  setStoredValue("imageToTextShowParagraphSeparators", String(showParagraphSeparatorsToggle.checked));
-  renderOutputMirror();
-}
-
 function getStoredValue(key) {
   try {
     return localStorage.getItem(key);
@@ -620,8 +607,13 @@ async function extractText() {
     shouldEnterProofreadMode = true;
   } catch (error) {
     console.error(error);
-    setProgress(getExtractionErrorMessage(error), 0);
-    showToast(getExtractionErrorMessage(error), true);
+    if (outputText.value.trim() || state.extractedPages.length > 0) {
+      setProgress("Text extracted.", 100);
+    } else {
+      const message = getExtractionErrorMessage(error);
+      setProgress(message, 0);
+      showToast(message, true);
+    }
   } finally {
     setProcessing(false);
   }
@@ -980,6 +972,8 @@ function setProofreadingMode(isEnabled) {
   proofreadButton.setAttribute("aria-checked", String(isEnabled));
   proofreadButton.setAttribute("aria-pressed", String(isEnabled));
   proofreadButton.title = isEnabled ? "Switch to edit mode" : "Switch to export preview";
+  outputMirror.hidden = !isEnabled;
+  outputText.hidden = false;
   outputText.readOnly = isEnabled;
   if (proofreadModeIndicator) {
     proofreadModeIndicator.classList.toggle("is-active", isEnabled);
@@ -1116,7 +1110,7 @@ function groupProofreadMatches(matches) {
   const groups = new Map();
 
   for (const match of matches) {
-    const key = fingerprintProofreadGroup(match.originalText);
+    const key = fingerprintProofreadGroup(match);
     const existing = groups.get(key);
     const entry = normalizeProofreadMatch(match);
 
@@ -1165,8 +1159,16 @@ function mergeProofreadReplacements(leftReplacements, rightReplacements) {
   return merged;
 }
 
-function fingerprintProofreadGroup(originalText) {
-  return normalizeProofreadGroupText(originalText);
+function fingerprintProofreadGroup(source) {
+  const originalText = typeof source === "string" ? source : source?.originalText || "";
+  const normalizedText = normalizeProofreadGroupText(originalText);
+  if (normalizedText) {
+    return normalizedText;
+  }
+
+  const ruleId = typeof source === "object" && source?.rule?.id ? source.rule.id : "rule";
+  const message = typeof source === "object" && source?.message ? source.message : "";
+  return `whitespace:${ruleId}:${message}`;
 }
 
 function normalizeProofreadGroupText(text) {
@@ -1174,7 +1176,7 @@ function normalizeProofreadGroupText(text) {
 }
 
 function createProofreadGroupKey(group) {
-  return fingerprintProofreadGroup(group.originalText);
+  return fingerprintProofreadGroup(group);
 }
 
 function normalizeProofreadGroups(groups) {
@@ -1263,6 +1265,7 @@ function renderProofreadingState({ status, groups, isChecking, isError = false }
   proofreadList.append(createProofreadCard(activeGroup, state.proofread.isStale));
   syncActiveProofreadCard();
   updateProofreadPanelVisibility();
+  scheduleProofreadActionButtonFit();
 }
 
 function refreshProofreadingPanel() {
@@ -1289,6 +1292,45 @@ function createProofreadEmptyState(message) {
   empty.className = "proofread-empty";
   empty.textContent = message;
   return empty;
+}
+
+function scheduleProofreadActionButtonFit() {
+  if (proofreadActionFitFrame) {
+    window.cancelAnimationFrame(proofreadActionFitFrame);
+  }
+
+  proofreadActionFitFrame = window.requestAnimationFrame(() => {
+    proofreadActionFitFrame = 0;
+    fitProofreadActionButtons();
+  });
+}
+
+function fitProofreadActionButtons() {
+  const buttons = proofreadList.querySelectorAll(".proofread-replacement, .proofread-custom-toggle");
+  buttons.forEach((button) => {
+    if (!(button instanceof HTMLElement) || button.clientWidth === 0) {
+      return;
+    }
+
+    button.style.fontSize = "";
+    const baseSize = Number.parseFloat(window.getComputedStyle(button).fontSize) || 16;
+    const minSize = Math.max(11, baseSize * 0.72);
+
+    if (button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight) {
+      return;
+    }
+
+    let nextSize = baseSize;
+    while (nextSize > minSize) {
+      nextSize = Math.max(minSize, nextSize - 0.5);
+      button.style.fontSize = `${nextSize}px`;
+      if (button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight) {
+        return;
+      }
+    }
+
+    button.style.fontSize = `${minSize}px`;
+  });
 }
 
 function createProofreadCard(group, isStale = false) {
@@ -1331,33 +1373,64 @@ function createProofreadCard(group, isStale = false) {
     document.createTextNode(group.matches[0].contextText.after),
   );
 
+  const replacementShell = document.createElement("div");
+  replacementShell.className = "proofread-replacement-shell";
+
   const replacementRow = document.createElement("div");
   replacementRow.className = "proofread-replacements";
   const replacements = (group.replacements || []).slice(0, 3);
+  const visibleReplacements = replacements.slice(0, 2);
 
-  if (replacements.length === 0) {
+  if (visibleReplacements.length === 1) {
+    replacementRow.classList.add("is-single");
+  } else if (visibleReplacements.length === 0) {
+    replacementRow.classList.add("is-empty");
+  }
+
+  if (visibleReplacements.length === 0) {
     const noReplacement = document.createElement("span");
     noReplacement.className = "proofread-note";
     noReplacement.textContent = "No automatic replacement available.";
+    noReplacement.style.gridColumn = "1 / -1";
     replacementRow.append(noReplacement);
   } else {
-    for (const replacement of replacements) {
+    visibleReplacements.forEach((replacement, index) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "secondary-button proofread-replacement";
       button.textContent = replacement.value;
       button.addEventListener("click", () => applyProofreadReplacement(group, replacement.value));
       button.disabled = isStale;
+      button.style.gridColumn = String(index + 1);
+      button.style.width = "100%";
       replacementRow.append(button);
-    }
+    });
   }
 
-  const customRow = document.createElement("div");
-  customRow.className = "proofread-custom-replacement";
+  const customToggle = document.createElement("button");
+  customToggle.type = "button";
+  customToggle.className = "ghost-button proofread-custom-toggle";
+  customToggle.textContent = "Custom";
+  customToggle.setAttribute("aria-expanded", "false");
+  customToggle.disabled = isStale;
+  customToggle.style.gridColumn = visibleReplacements.length === 1 ? "3" : visibleReplacements.length > 1 ? String(visibleReplacements.length + 1) : "2";
+  customToggle.style.width = "100%";
+  customToggle.addEventListener("click", () => {
+    const shouldExpand = !replacementShell.classList.contains("is-custom-open");
+    replacementShell.classList.toggle("is-custom-open", shouldExpand);
+    customToggle.classList.toggle("is-active", shouldExpand);
+    customToggle.setAttribute("aria-expanded", String(shouldExpand));
+    if (shouldExpand) {
+      window.requestAnimationFrame(() => customInput.focus());
+    } else {
+      customInput.blur();
+    }
+  });
 
-  const customLabel = document.createElement("span");
-  customLabel.className = "proofread-custom-label";
-  customLabel.textContent = "Custom replacement";
+  const customRow = document.createElement("div");
+  customRow.className = "proofread-custom-dock";
+  customRow.id = `proofread-custom-${group.matches[0].offset}-${group.matches[0].length}`;
+  customToggle.setAttribute("aria-controls", customRow.id);
 
   const customControls = document.createElement("div");
   customControls.className = "proofread-custom-controls";
@@ -1365,7 +1438,7 @@ function createProofreadCard(group, isStale = false) {
   const customInput = document.createElement("input");
   customInput.type = "text";
   customInput.className = "proofread-custom-input";
-  customInput.placeholder = "Type your own replacement";
+  customInput.placeholder = "Type your own";
   customInput.disabled = isStale;
   customInput.setAttribute("aria-label", "Custom replacement");
   customInput.addEventListener("keydown", (event) => {
@@ -1385,16 +1458,18 @@ function createProofreadCard(group, isStale = false) {
   customButton.addEventListener("click", () => applyCustomProofreadReplacement(group, customInput));
 
   customControls.append(customInput, customButton);
-  customRow.append(customLabel, customControls);
+  customRow.append(customControls);
 
-  const occurrenceSummary = document.createElement("span");
-  occurrenceSummary.className = "proofread-note";
-  occurrenceSummary.textContent =
-    group.matches.length > 1
-      ? `Applies to ${group.matches.length} matching occurrences.`
-      : "Applies to 1 occurrence.";
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "ghost-button proofread-delete";
+  deleteButton.textContent = "Delete";
+  deleteButton.addEventListener("click", () => applyProofreadDeletion(group));
+  deleteButton.disabled = isStale;
 
-  card.append(header, context, occurrenceSummary, replacementRow, customRow);
+  replacementRow.append(customToggle);
+  replacementShell.append(replacementRow, customRow, deleteButton);
+  card.append(header, context, replacementShell);
   return card;
 }
 
@@ -1422,6 +1497,10 @@ function applyCustomProofreadReplacement(group, input) {
   applyProofreadReplacement(group, replacement);
 }
 
+function applyProofreadDeletion(group) {
+  applyProofreadReplacement(group, "");
+}
+
 function renderOutputMirror() {
   if (!outputMirror) {
     return;
@@ -1433,8 +1512,9 @@ function renderOutputMirror() {
   const isProofreadingMode = state.proofread.isEnabled;
   if (outputEditor) {
     outputEditor.classList.toggle("is-proofreading", isProofreadingMode);
-    outputEditor.classList.toggle("has-paragraph-separators", Boolean(showParagraphSeparatorsToggle?.checked));
   }
+  outputMirror.hidden = !isProofreadingMode;
+  outputText.hidden = isProofreadingMode;
   outputText.readOnly = isProofreadingMode;
   const highlights = collectProofreadHighlights(text, visibleGroups);
 
@@ -1443,7 +1523,6 @@ function renderOutputMirror() {
     buildMirrorFragment(
       text,
       highlights,
-      showParagraphSeparatorsToggle?.checked,
       isProofreadingMode,
     ),
   );
@@ -1503,7 +1582,7 @@ function mergeProofreadHighlights(highlights) {
   return merged;
 }
 
-function buildMirrorFragment(text, highlights, showParagraphSeparators = false, isProofreadingMode = false) {
+function buildMirrorFragment(text, highlights, isProofreadingMode = false) {
   const fragment = document.createDocumentFragment();
 
   if (!text) {
@@ -1513,13 +1592,10 @@ function buildMirrorFragment(text, highlights, showParagraphSeparators = false, 
   const proofreadRows = isProofreadingMode ? buildCxAlloyPreviewRows(text) : [];
 
   if (isProofreadingMode) {
-    proofreadRows.forEach((row, index) => {
+    proofreadRows.forEach((row) => {
       const rowHidden = state.exportPreview.dismissedKeys.has(row.key);
       const rowElement = document.createElement("div");
       rowElement.className = "mirror-export-row";
-      if (showParagraphSeparators && index > 0) {
-        rowElement.classList.add("has-separator");
-      }
       if (rowHidden) {
         rowElement.classList.add("is-removed");
       }
@@ -1626,7 +1702,31 @@ function appendHighlightedParagraphText(container, text, paragraphStart, highlig
     const span = document.createElement("span");
     span.className = "output-highlight";
     span.dataset.proofreadKey = highlight.key;
-    span.textContent = text.slice(localStart, localEnd);
+    span.setAttribute("role", "button");
+    span.setAttribute("tabindex", "0");
+    const highlightText = text.slice(localStart, localEnd);
+    const isWhitespaceOnly = /^\s+$/.test(highlightText);
+    if (isWhitespaceOnly) {
+      span.classList.add("is-whitespace");
+      span.title = "Whitespace issue";
+      span.textContent = highlightText.replace(/ /g, "·").replace(/\t/g, "⇥").replace(/\n/g, "↵");
+    } else {
+      span.textContent = highlightText;
+    }
+    span.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      activateProofreadGroup(highlight.key);
+    });
+    span.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      activateProofreadGroup(highlight.key);
+    });
     container.append(span);
     cursor = localEnd;
   }
@@ -1770,9 +1870,13 @@ async function applyProofreadReplacement(group, replacement) {
 
   renderProofreadingState({
     status:
-      remainingGroups.length > 0
-        ? `Applied to ${group.matches.length} occurrences. ${remainingGroups.length} groups remain.`
-        : "Applied to all matching occurrences.",
+      replacement.length === 0
+        ? remainingGroups.length > 0
+          ? `Deleted ${group.matches.length} occurrence${group.matches.length === 1 ? "" : "s"}. ${remainingGroups.length} groups remain.`
+          : "Deleted all matching occurrences."
+        : remainingGroups.length > 0
+          ? `Applied to ${group.matches.length} occurrence${group.matches.length === 1 ? "" : "s"}. ${remainingGroups.length} groups remain.`
+          : "Applied to all matching occurrences.",
     groups: remainingGroups,
     isChecking: false,
   });
@@ -1811,6 +1915,7 @@ function markProofreadingStale(message) {
     proofreadList.replaceChildren(
       ...state.proofread.groups.map((group) => createProofreadCard(group, true)),
     );
+    scheduleProofreadActionButtonFit();
   } else {
     proofreadList.replaceChildren(createProofreadEmptyState("Run export preview to review suggestions."));
   }
@@ -1847,21 +1952,6 @@ async function copyText() {
   }
 }
 
-function downloadText() {
-  const text = outputText.value.trim();
-  if (!text) {
-    return;
-  }
-
-  const sourceName = state.file?.name?.replace(/\.[^.]+$/, "") || "extracted-text";
-  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-  const anchor = document.createElement("a");
-  anchor.href = URL.createObjectURL(blob);
-  anchor.download = `${sourceName}.txt`;
-  anchor.click();
-  URL.revokeObjectURL(anchor.href);
-}
-
 function resetApp() {
   state.file = null;
   state.renderedPages = [];
@@ -1874,7 +1964,6 @@ function resetApp() {
   pageCount.textContent = "0 pages";
   copyButton.disabled = true;
   exportCxAlloyButton.disabled = true;
-  downloadButton.disabled = true;
   dropzone.classList.remove("has-file");
   dropzoneShell.classList.remove("has-file");
   resetPreview();
@@ -1940,7 +2029,6 @@ function updateTextStats() {
   textStats.textContent = `${length.toLocaleString()} ${characterLabel} · ${rowCount.toLocaleString()} CxAlloy ${rowLabel}`;
   copyButton.disabled = length === 0;
   exportCxAlloyButton.disabled = length === 0 || rowCount === 0 || state.isProcessing;
-  downloadButton.disabled = length === 0;
   if (!state.isProcessing && !state.proofread.isChecking) {
     proofreadButton.disabled = length === 0;
   }

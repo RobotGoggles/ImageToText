@@ -89,16 +89,6 @@
                       </span>
                     </span>
                   </label>
-
-                  <label class="toggle-row toggle-switch-row">
-                    <span>Show paragraph separators</span>
-                    <span class="toggle-switch">
-                      <input id="showParagraphSeparatorsToggle" type="checkbox" checked />
-                      <span class="toggle-switch-track" aria-hidden="true">
-                        <span class="toggle-switch-thumb"></span>
-                      </span>
-                    </span>
-                  </label>
                 </div>
 
                 <button class="bug-report-text-button" id="bugReportButton" type="button">
@@ -190,14 +180,17 @@
                   <span class="mode-switch-thumb"></span>
                 </span>
               </button>
+              <button
+                class="secondary-button"
+                id="exportCxAlloyButton"
+                type="button"
+                disabled
+                title="Export a CxAlloy-formatted Excel file"
+              >
+                Export for CxAlloy
+              </button>
               <button class="secondary-button" id="copyButton" type="button" disabled>
-                Copy Text
-              </button>
-              <button class="secondary-button" id="exportCxAlloyButton" type="button" disabled>
-                Export CxAlloy
-              </button>
-              <button class="secondary-button" id="downloadButton" type="button" disabled>
-                Download TXT
+                Copy to Clipboard
               </button>
             </div>
 
