@@ -7,7 +7,6 @@ const fileInput = document.querySelector("#fileInput");
 const dropzone = document.querySelector("#dropzone");
 const dropzoneShell = document.querySelector("#dropzoneShell");
 const clearUploadButton = document.querySelector("#clearUploadButton");
-const themeToggle = document.querySelector("#themeToggle");
 const bugReportButton = document.querySelector("#bugReportButton");
 const copyButton = document.querySelector("#copyButton");
 const exportCxAlloyButton = document.querySelector("#exportCxAlloyButton");
@@ -204,7 +203,6 @@ const acronymStopwords = new Set([
   "YOUR",
 ]);
 
-initializeTheme();
 initializeClipboardShortcutLabel();
 initializeAutoFixCapsSetting();
 
@@ -234,7 +232,6 @@ dropzone.addEventListener("drop", (event) => {
   }
 });
 
-themeToggle.addEventListener("click", toggleTheme);
 bugReportButton.addEventListener("click", reportBug);
 clearUploadButton.addEventListener("click", resetApp);
 copyButton.addEventListener("click", copyText);
@@ -250,18 +247,6 @@ autoFixCapsToggle.addEventListener("change", handleAutoFixCapsChange);
 document.addEventListener("click", handleDocumentClick);
 outputMirror.addEventListener("click", handleOutputMirrorClick);
 window.addEventListener("resize", scheduleProofreadActionButtonFit);
-
-function initializeTheme() {
-  const savedTheme = getStoredValue("imageToTextTheme");
-  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  applyTheme(savedTheme || (prefersDark ? "dark" : "light"));
-}
-
-function toggleTheme() {
-  const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  setStoredValue("imageToTextTheme", nextTheme);
-  applyTheme(nextTheme);
-}
 
 async function exportCxAlloyWorkbook() {
   const description = outputText.value.trim();
@@ -412,7 +397,7 @@ function buildBugReportUrl() {
       "## Environment",
       `- Page: ${currentUrl}`,
       `- Browser: ${browser}`,
-      `- Theme: ${document.documentElement.dataset.theme || "light"}`,
+      "- Theme: dark",
       `- File name: ${state.file?.name || "No file loaded"}`,
       "",
       "## Additional notes",
@@ -421,14 +406,6 @@ function buildBugReportUrl() {
   );
 
   return `${repoUrl}?title=${subject}&body=${body}`;
-}
-
-function applyTheme(theme) {
-  const isDark = theme === "dark";
-  document.documentElement.dataset.theme = isDark ? "dark" : "light";
-  themeToggle.setAttribute("aria-checked", String(isDark));
-  themeToggle.setAttribute("aria-label", "Dark mode");
-  themeToggle.title = "Dark mode";
 }
 
 function initializeClipboardShortcutLabel() {
@@ -630,7 +607,7 @@ async function renderPdfPreview(file) {
   wrapper.className = "preview-pages";
   dropzonePreview.append(wrapper);
 
-  pageCount.textContent = `${pdf.numPages} ${pdf.numPages === 1 ? "page" : "pages"}`;
+  pageCount.textContent = String(pdf.numPages);
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
@@ -670,7 +647,7 @@ async function renderImagePreview(file) {
   dropzonePreview.append(wrapper);
   addPreviewPage(wrapper, canvas, "Image 1");
   state.renderedPages.push(canvas);
-  pageCount.textContent = "1 page";
+  pageCount.textContent = "1";
 }
 
 async function extractEmbeddedPdfText(file) {
@@ -1358,7 +1335,7 @@ function createProofreadCard(group, isStale = false) {
 
   const dismissButton = document.createElement("button");
   dismissButton.type = "button";
-  dismissButton.className = "ghost-button proofread-dismiss";
+  dismissButton.className = "btn btn-text proofread-dismiss";
   dismissButton.textContent = "Ignore";
   dismissButton.addEventListener("click", () => dismissProofreadGroup(group));
   dismissButton.disabled = isStale;
@@ -1397,7 +1374,7 @@ function createProofreadCard(group, isStale = false) {
     visibleReplacements.forEach((replacement, index) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "secondary-button proofread-replacement";
+      button.className = "btn btn-soft proofread-replacement";
       button.textContent = replacement.value;
       button.addEventListener("click", () => applyProofreadReplacement(group, replacement.value));
       button.disabled = isStale;
@@ -1409,7 +1386,7 @@ function createProofreadCard(group, isStale = false) {
 
   const customToggle = document.createElement("button");
   customToggle.type = "button";
-  customToggle.className = "ghost-button proofread-custom-toggle";
+  customToggle.className = "btn btn-text proofread-custom-toggle";
   customToggle.textContent = "Custom";
   customToggle.setAttribute("aria-expanded", "false");
   customToggle.disabled = isStale;
@@ -1452,7 +1429,7 @@ function createProofreadCard(group, isStale = false) {
 
   const customButton = document.createElement("button");
   customButton.type = "button";
-  customButton.className = "secondary-button proofread-custom-apply";
+  customButton.className = "btn btn-soft proofread-custom-apply";
   customButton.textContent = "Apply";
   customButton.disabled = isStale;
   customButton.addEventListener("click", () => applyCustomProofreadReplacement(group, customInput));
@@ -1462,7 +1439,7 @@ function createProofreadCard(group, isStale = false) {
 
   const deleteButton = document.createElement("button");
   deleteButton.type = "button";
-  deleteButton.className = "ghost-button proofread-delete";
+  deleteButton.className = "btn btn-text proofread-delete";
   deleteButton.textContent = "Delete";
   deleteButton.addEventListener("click", () => applyProofreadDeletion(group));
   deleteButton.disabled = isStale;
@@ -1961,7 +1938,7 @@ function resetApp() {
   fileInput.value = "";
   outputText.value = "";
   fileStatus.textContent = "No file selected";
-  pageCount.textContent = "0 pages";
+  pageCount.textContent = "0";
   copyButton.disabled = true;
   exportCxAlloyButton.disabled = true;
   dropzone.classList.remove("has-file");
@@ -2024,9 +2001,7 @@ function updateTextStats() {
   const rowCount = buildCxAlloyRowsFromText(outputText.value, {
     dismissedKeys: state.exportPreview.dismissedKeys,
   }).length;
-  const characterLabel = length === 1 ? "character" : "characters";
-  const rowLabel = rowCount === 1 ? "row" : "rows";
-  textStats.textContent = `${length.toLocaleString()} ${characterLabel} · ${rowCount.toLocaleString()} CxAlloy ${rowLabel}`;
+  textStats.textContent = length.toLocaleString();
   copyButton.disabled = length === 0;
   exportCxAlloyButton.disabled = length === 0 || rowCount === 0 || state.isProcessing;
   if (!state.isProcessing && !state.proofread.isChecking) {

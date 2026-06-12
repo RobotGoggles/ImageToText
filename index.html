@@ -3,109 +3,97 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
     <title>Image to Text</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <section class="workspace" aria-label="Image to Text">
-        <div class="topbar">
-          <div class="brand-mark" aria-label="Image to Text" title="Image to Text">
-            <svg viewBox="0 0 64 64" role="img" aria-hidden="true">
-              <path
-                d="M20 10h18l12 12v30a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4V14a4 4 0 0 1 4-4Z"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="3.5"
-                stroke-linejoin="round"
-              />
-              <path d="M38 10v10h10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round" />
-              <path d="M24 28h16M24 36h10M24 44h14" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" />
-            </svg>
-          </div>
-          <div class="topbar-actions">
-            <details class="advanced-settings">
-              <summary aria-label="Advanced settings" title="Advanced settings">
-                <span class="settings-button-label">Settings</span>
-              </summary>
-              <div class="advanced-body">
-                <div class="settings-section">
-                  <label>
-                    <span>Formatting</span>
-                    <select id="formatSelect">
-                      <option value="paragraphs" selected>Preserve paragraphs</option>
-                      <option value="clean">Clean copy text</option>
-                      <option value="raw">Raw OCR output</option>
-                    </select>
-                  </label>
-
-                  <label>
-                    <span>OCR language</span>
-                    <select id="languageSelect">
-                      <option value="eng">English</option>
-                      <option value="spa">Spanish</option>
-                      <option value="fra">French</option>
-                      <option value="deu">German</option>
-                      <option value="ita">Italian</option>
-                      <option value="por">Portuguese</option>
-                    </select>
-                  </label>
-                </div>
-
-                <div class="settings-section">
-                  <div class="settings-action-row">
-                    <span>Dark Mode</span>
-                    <button
-                      class="theme-switch toggle-switch"
-                      id="themeToggle"
-                      type="button"
-                      role="switch"
-                      aria-checked="false"
-                      aria-label="Dark mode"
-                      title="Dark mode"
-                    >
-                      <span class="toggle-switch-track" aria-hidden="true">
-                        <span class="toggle-switch-thumb"></span>
-                      </span>
-                    </button>
-                  </div>
-
-                  <label class="toggle-row toggle-switch-row">
-                    <span>Use embedded PDF text when available</span>
-                    <span class="toggle-switch">
-                      <input id="embeddedTextToggle" type="checkbox" checked />
-                      <span class="toggle-switch-track" aria-hidden="true">
-                        <span class="toggle-switch-thumb"></span>
-                      </span>
-                    </span>
-                  </label>
-
-                  <label class="toggle-row toggle-switch-row">
-                    <span>Auto-fix ALL CAPS OCR</span>
-                    <span class="toggle-switch">
-                      <input id="autoFixCapsToggle" type="checkbox" checked />
-                      <span class="toggle-switch-track" aria-hidden="true">
-                        <span class="toggle-switch-thumb"></span>
-                      </span>
-                    </span>
-                  </label>
-                </div>
-
-                <button class="bug-report-text-button" id="bugReportButton" type="button">
-                  Report a bug
-                </button>
-              </div>
-            </details>
+    <div class="app">
+      <header class="app-bar">
+        <div class="app-bar-start">
+          <span class="app-mark" aria-hidden="true"></span>
+          <div>
+            <h1 class="app-title">Image to Text</h1>
+            <p class="app-subtitle">OCR extraction for CxAlloy</p>
           </div>
         </div>
 
+        <div class="app-bar-stats" aria-live="polite">
+          <div class="metric">
+            <span class="metric-value" id="pageCount">0</span>
+            <span class="metric-label">pages</span>
+          </div>
+          <span class="metric-divider" aria-hidden="true"></span>
+          <div class="metric">
+            <span class="metric-value" id="textStats">0</span>
+            <span class="metric-label">characters</span>
+          </div>
+        </div>
+
+        <details class="advanced-settings">
+          <summary class="settings-pill" aria-label="Settings" title="Settings">
+            <span class="settings-button-label">Settings</span>
+          </summary>
+          <div class="advanced-body">
+            <div class="settings-section">
+              <label class="field">
+                <span class="field-label">Formatting</span>
+                <select id="formatSelect">
+                  <option value="paragraphs" selected>Preserve paragraphs</option>
+                  <option value="clean">Clean copy text</option>
+                  <option value="raw">Raw OCR output</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span class="field-label">OCR language</span>
+                <select id="languageSelect">
+                  <option value="eng">English</option>
+                  <option value="spa">Spanish</option>
+                  <option value="fra">French</option>
+                  <option value="deu">German</option>
+                  <option value="ita">Italian</option>
+                  <option value="por">Portuguese</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="settings-section">
+              <label class="toggle-row toggle-switch-row">
+                <span>Use embedded PDF text when available</span>
+                <span class="toggle-switch">
+                  <input id="embeddedTextToggle" type="checkbox" checked />
+                  <span class="toggle-switch-track" aria-hidden="true">
+                    <span class="toggle-switch-thumb"></span>
+                  </span>
+                </span>
+              </label>
+
+              <label class="toggle-row toggle-switch-row">
+                <span>Auto-fix ALL CAPS OCR</span>
+                <span class="toggle-switch">
+                  <input id="autoFixCapsToggle" type="checkbox" checked />
+                  <span class="toggle-switch-track" aria-hidden="true">
+                    <span class="toggle-switch-thumb"></span>
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <button class="btn btn-text bug-report-text-button" id="bugReportButton" type="button">
+              Report a bug
+            </button>
+          </div>
+        </details>
+      </header>
+
+      <main class="main">
         <div class="grid">
-          <section class="panel input-panel" aria-labelledby="upload-title">
-            <div class="panel-heading">
-              <h2 id="upload-title">Source File</h2>
-              <div class="panel-heading-meta">
-                <span id="fileStatus">No file selected</span>
-                <span id="pageCount">0 pages</span>
+          <section class="card panel input-panel" aria-labelledby="upload-title">
+            <div class="card-head">
+              <div>
+                <h2 class="card-title" id="upload-title">Source File</h2>
+                <p class="card-desc" id="fileStatus">No file selected</p>
               </div>
             </div>
 
@@ -117,39 +105,48 @@
                   accept="application/pdf,image/png,image/jpeg,image/webp,image/bmp,image/tiff"
                 />
                 <div class="dropzone-placeholder" id="dropzonePlaceholder">
-                  <span class="dropzone-icon" aria-hidden="true">+</span>
+                  <span class="dropzone-ring" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 3v12" />
+                      <path d="m7 8 5-5 5 5" />
+                      <path d="M5 21h14" />
+                    </svg>
+                  </span>
                   <span class="dropzone-title">
                     Drag and drop a file here or use <span id="clipboardShortcutText">Cmd</span>+V
                   </span>
+                  <span class="dropzone-hint">PDF or image files</span>
                 </div>
                 <div id="dropzonePreview" class="dropzone-preview preview-empty">
                   <span>Preview appears after upload</span>
                 </div>
               </label>
               <button
-                class="clear-upload-button"
+                class="btn btn-icon clear-upload-button"
                 id="clearUploadButton"
                 type="button"
                 aria-label="Remove uploaded file"
                 title="Remove uploaded file"
               >
-                ×
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
               </button>
               <div class="extract-status" id="extractStatus" role="status" aria-live="polite" aria-atomic="true">
                 <div class="extract-status-bar" id="buttonProgress"></div>
                 <span class="button-label" id="buttonLabel">Upload a document to read the text.</span>
               </div>
             </div>
-
           </section>
 
-          <section class="panel output-panel" aria-labelledby="output-title">
-            <div class="panel-heading">
-              <div class="panel-heading-meta">
-                <h2 id="output-title">Extracted Text</h2>
+          <section class="card panel output-panel" aria-labelledby="output-title">
+            <div class="card-head card-head-split">
+              <div>
+                <h2 class="card-title" id="output-title">Extracted Text</h2>
+                <p class="card-desc">Edit before copying or exporting to CxAlloy.</p>
               </div>
-              <span id="textStats">0 characters</span>
             </div>
+
             <div class="output-editor">
               <div id="outputMirror" class="output-mirror" aria-hidden="true"></div>
               <textarea
@@ -173,7 +170,8 @@
                 </p>
               </section>
             </div>
-            <div class="actions">
+
+            <div class="action-row">
               <button class="mode-switch" id="proofreadButton" type="button" role="switch" aria-checked="false" disabled>
                 <span class="mode-switch-label">Export preview</span>
                 <span class="mode-switch-track" aria-hidden="true">
@@ -181,7 +179,7 @@
                 </span>
               </button>
               <button
-                class="secondary-button"
+                class="btn btn-fill"
                 id="exportCxAlloyButton"
                 type="button"
                 disabled
@@ -189,15 +187,14 @@
               >
                 Export for CxAlloy
               </button>
-              <button class="secondary-button" id="copyButton" type="button" disabled>
+              <button class="btn btn-soft" id="copyButton" type="button" disabled>
                 Copy to Clipboard
               </button>
             </div>
-
           </section>
         </div>
-      </section>
-    </main>
+      </main>
+    </div>
 
     <script type="module" src="./app.js"></script>
   </body>
