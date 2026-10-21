@@ -1197,6 +1197,62 @@ button:focus-visible,
   text-underline-offset: 2px;
 }
 
+/* Settings note */
+
+.settings-note {
+  margin: -4px 0 0;
+  color: var(--ink-tertiary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-note a {
+  color: var(--accent);
+  text-underline-offset: 2px;
+}
+
+/* Spell check in progress */
+
+.output-editor.is-checking .output-mirror {
+  opacity: 0.72;
+  transition: opacity 0.2s ease;
+}
+
+/* Export file-name dialog */
+
+.save-dialog {
+  width: min(420px, calc(100vw - 32px));
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+}
+
+.save-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.save-dialog-form {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.save-dialog-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.save-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 /* Toast */
 
 .toast {
