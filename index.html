@@ -46,7 +46,7 @@
               </label>
 
               <label class="field">
-                <span class="field-label">OCR language</span>
+                <span class="field-label">Document language</span>
                 <select id="languageSelect">
                   <option value="eng">English</option>
                   <option value="spa">Spanish</option>
@@ -78,6 +78,23 @@
                   </span>
                 </span>
               </label>
+            </div>
+
+            <div class="settings-section">
+              <label class="toggle-row toggle-switch-row">
+                <span>Spell check in export preview</span>
+                <span class="toggle-switch">
+                  <input id="spellcheckToggle" type="checkbox" aria-describedby="spellcheckNote" />
+                  <span class="toggle-switch-track" aria-hidden="true">
+                    <span class="toggle-switch-thumb"></span>
+                  </span>
+                </span>
+              </label>
+              <p class="settings-note" id="spellcheckNote">
+                Sends the extracted text to
+                <a href="https://languagetool.org" target="_blank" rel="noopener">LanguageTool</a>
+                for checking. Leave off for confidential documents.
+              </p>
             </div>
 
             <button class="btn btn-text bug-report-text-button" id="bugReportButton" type="button">
@@ -158,7 +175,7 @@
                 <div class="proofread-header">
                   <div>
                     <h3 id="proofread-title">Proofread</h3>
-                    <span id="proofreadStatus" aria-live="polite">Run export preview to review suggestions</span>
+                    <span id="proofreadStatus" aria-live="polite"></span>
                   </div>
                 </div>
 
@@ -195,6 +212,20 @@
         </div>
       </main>
     </div>
+
+    <dialog class="save-dialog" id="saveDialog" aria-labelledby="saveDialogTitle">
+      <form method="dialog" class="save-dialog-form">
+        <h2 class="save-dialog-title" id="saveDialogTitle">Export for CxAlloy</h2>
+        <label class="field">
+          <span class="field-label">File name</span>
+          <input class="save-dialog-input" id="saveFileName" type="text" autocomplete="off" spellcheck="false" required />
+        </label>
+        <div class="save-dialog-actions">
+          <button class="btn btn-soft" type="button" id="saveDialogCancel">Cancel</button>
+          <button class="btn btn-fill" type="submit" value="save">Save</button>
+        </div>
+      </form>
+    </dialog>
 
     <script type="module" src="./app.js"></script>
   </body>

@@ -1,0 +1,13 @@
+{
+  "name": "image-to-text",
+  "private": true,
+  "type": "module",
+  "description": "Browser app that turns PDFs and screenshots into editable text and CxAlloy import files.",
+  "scripts": {
+    "start": "python3 -m http.server 5173",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
